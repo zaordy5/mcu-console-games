@@ -1,3 +1,6 @@
+/** @file
+ *  Parsers for shared layouts and custom mine counts.
+ */
 #include "layout.h"
 
 /** Read a decimal field and advance to its terminating separator. */

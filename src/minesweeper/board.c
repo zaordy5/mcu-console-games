@@ -1,3 +1,6 @@
+/** @file
+ *  Mine placement, cell operations and layout solver.
+ */
 #include "board.h"
 
 /** Advance a nonzero xorshift32 generator. */

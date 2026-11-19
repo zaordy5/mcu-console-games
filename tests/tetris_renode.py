@@ -7,6 +7,8 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+from renode_paths import monitor_path
+
 
 CLEAR = b"\x1b[2J\x1b[H"
 RESET = b"\x1b[0m"
@@ -94,10 +96,9 @@ def run_renode(renode: str, elf: Path, profile: Path) -> bytes:
         shutil.copyfile(elf, local_elf)
         profile_lines = profile.read_text(encoding="utf-8").splitlines(keepends=True)
         board_setup = "".join(line for line in profile_lines if not line.startswith("$bin?="))
-        scenario.write_text(f"$bin=@{local_elf}\n" + board_setup, encoding="utf-8")
+        scenario.write_text(f"$bin={monitor_path(local_elf)}\n" + board_setup, encoding="utf-8")
 
-        commands = ["sysbus.cpu PerformanceInMips 16",
-                    f"sysbus.usart2 CreateFileBackend @{uart} true",
+        commands = [f"sysbus.usart2 CreateFileBackend {monitor_path(uart)} true",
                     'emulation RunFor "00:00:00.20"']
         send_keys(commands, "1Q11", "00:00:00.28")
         commands.append('emulation RunFor "00:00:00.90"')
@@ -118,7 +119,8 @@ def run_renode(renode: str, elf: Path, profile: Path) -> bytes:
         commands.append('emulation RunFor "00:00:01.25"')
         send_keys(commands, "Q", "00:00:00.08")
 
-        args = [renode, "--disable-gui", "--hide-analyzers", "--plain", "--port", "-1", str(scenario)]
+        args = [renode, "--disable-gui", "--hide-analyzers", "--plain", "--port", "-1",
+                "-e", f"include {monitor_path(scenario)}"]
         for command in (*commands, "quit"):
             args.extend(("-e", command))
         result = subprocess.run(args, capture_output=True, text=True, timeout=120, check=False)

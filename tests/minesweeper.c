@@ -1,3 +1,6 @@
+/** @file
+ *  Host regression tests for Minesweeper rules and terminal output.
+ */
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
@@ -7,9 +10,12 @@
 
 /** Last frame captured by the host UART substitute. */
 static char frame[16384];
+/** Number of bytes captured in the current UART frame. */
 static size_t frame_len;
 
+/** Background style of the selected board cell. */
 #define CURSOR_STYLE "\033[48;2;255;119;191m"
+/** Background style of the first revealed region. */
 #define FIRST_REVEAL_STYLE "\033[48;2;106;48;94m"
 
 /** Capture a UART write and guard the fixed test buffer. */
@@ -360,6 +366,31 @@ static void test_shared_and_pause(void)
     minesweeper_game.key('q');
 }
 
+/** Confirm that each difficulty changes the initial mine count via the Game API. */
+static void test_difficulties(void)
+{
+    const GameDifficulty difficulties[] = {GAME_EASY, GAME_NORMAL, GAME_HARD};
+    const char *const counters[] = {"Mines left 7/7", "Mines left 11/11", "Mines left 16/16"};
+    for (unsigned i = 0; i < sizeof difficulties / sizeof difficulties[0]; ++i) {
+        minesweeper_game.start(difficulties[i]);
+        expect_frame(counters[i]);
+        assert(strstr(frame, "Cell A1"));
+        minesweeper_game.key('q');
+        assert(minesweeper_game.finished());
+    }
+}
+
+/** Confirm that a truncated ANSI arrow cannot swallow Q after timing out. */
+static void test_escape_timeout(void)
+{
+    minesweeper_game.start(GAME_NORMAL);
+    expect_frame("Cell A1");
+    send_text("\033[");
+    minesweeper_game.tick(125);
+    minesweeper_game.key('q');
+    assert(minesweeper_game.finished());
+}
+
 /** Print a reproducible mine layout from the result screen's Layout code. */
 static int print_layout(const char *input)
 {
@@ -398,5 +429,7 @@ int main(int argc, char **argv)
     test_code_parser();
     test_custom_session();
     test_shared_and_pause();
+    test_difficulties();
+    test_escape_timeout();
     puts("Minesweeper checks passed");
 }

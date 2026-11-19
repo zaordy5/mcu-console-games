@@ -1,3 +1,6 @@
+/** @file
+ *  STM32F407 USART2 and SysTick setup and polling.
+ */
 #include "game.h"
 #include "platform.h"
 

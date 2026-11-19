@@ -14,7 +14,7 @@ MENU = b"MCU Console Games"
 DIFFICULTY = b"Choose difficulty"
 GAME_OVER = b"\x1b[31mGame over.\x1b[0m  Q - menu"
 BOARD_PAINT = re.compile(rb"\x1b\[[0-9]+;[0-9]+H\x1b\[(?:4[1-7]|10[0-7])m")
-BOTTOM_CURSOR = b"\x1b[24;1H"
+BOTTOM_CURSOR = b"\x1b[24;40H"
 
 
 def send_keys(commands: list[str], keys: str, interval: str) -> None:
@@ -41,10 +41,10 @@ def check_uart(data: bytes) -> None:
 
     easy, hard, normal = (screens[index] for index in (4, 7, 10))
     for game, interval in zip((easy, hard, normal), (850, 350, 600)):
-        hud = f"Score: 0 | Level: 1 | Lines: 0 | Drop: {interval} ms".encode()
-        if hud not in game or not BOARD_PAINT.search(game):
+        drop = f"Drop: {interval} ms".encode()
+        if b"Score 0 L1 Ln0" not in game or drop not in game or not BOARD_PAINT.search(game):
             raise ValueError(f"Missing starting HUD or ANSI color at {interval} ms")
-    if b"Rotate  W      or Up" not in easy or b"Drop    S      or Down" not in easy:
+    if b"A/D or Left/Right" not in easy or b"W/Up" not in easy or b"S/Down" not in easy:
         raise ValueError("The game screen is missing the arrow key guide")
     if easy.count(BOTTOM_CURSOR) < 6 or b"Game over." in easy:
         raise ValueError("Easy round should draw the start, gravity and key updates")

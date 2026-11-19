@@ -77,9 +77,9 @@ static void test_game_callbacks(void)
     tetris_game.draw();
     assert(strstr(output, "\033[2J\033[H"));
     assert(strstr(output, "Difficulty: Easy"));
-    assert(strstr(output, "Score: 0 | Level: 1 | Lines: 0 | Drop: 850 ms"));
-    assert(strstr(output, "Move    A / D  or Left / Right"));
-    assert(strstr(output, "Rotate  W      or Up") && strstr(output, "Drop    S      or Down"));
+    assert(strstr(output, "Score 0 L1 Ln0") && strstr(output, "Drop: 850 ms"));
+    assert(strstr(output, "A/D or Left/Right"));
+    assert(strstr(output, "W/Up") && strstr(output, "S/Down"));
     assert(strstr(output, "\033[104m") || strstr(output, "\033[45m") ||
            strstr(output, "\033[46m") || strstr(output, "\033[43m") ||
            strstr(output, "\033[42m") || strstr(output, "\033[41m") ||
@@ -189,10 +189,10 @@ static void test_level_replay(void)
         tetris_game.draw();
         assert(!tetris_game.finished() && !strstr(output, "Game over."));
         if (piece == 4) {
-            assert(strstr(output, "Score: 100 | Level: 1 | Lines: 1 | Drop: 600 ms"));
+            assert(strstr(output, "Score 100 L1 Ln1") && strstr(output, "Drop: 600 ms"));
         }
     }
-    assert(strstr(output, "Score: 500 | Level: 2 | Lines: 5 | Drop: 530 ms"));
+    assert(strstr(output, "Score 500 L2 Ln5") && strstr(output, "Drop: 530 ms"));
     assert(!strstr(output, "\033[2J"));
     clear_output();
     tetris_game.tick(529);

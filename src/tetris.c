@@ -8,8 +8,10 @@
 #define FIELD_TOP 4
 /** Terminal row for the result or exit message. */
 #define RESULT_ROW (FIELD_TOP + TETRIS_HEIGHT + 2)
-/** First column of the key guide to the right of the board. */
-#define GUIDE_COLUMN (2 * TETRIS_WIDTH + 7)
+/** Width of the compact terminal layout and column where the cursor is parked. */
+#define FRAME_WIDTH 40
+/** Column of the drop timer on the title row. */
+#define DROP_COLUMN 29
 /** Minimum time between successful turns when the terminal repeats a held key. */
 #define ROTATION_INTERVAL_MS 180u
 
@@ -47,14 +49,6 @@ static const char *const backgrounds[TETRIS_SHAPES + 1] = {
 /** Display labels keyed by the portable starting difficulty. */
 static const char *const difficulty_labels[] = { "Easy", "Normal", "Hard" };
 
-/** Action and key pairs displayed to the right of the board. */
-static const char *const key_guide[] = {
-    "Move    A / D  or Left / Right",
-    "Rotate  W      or Up",
-    "Drop    S      or Down",
-    "Menu    Q"
-};
-
 /** Write an unsigned decimal number without a formatted I/O dependency. */
 static void write_number(uint32_t number)
 {
@@ -91,7 +85,7 @@ static void draw_border(void)
 /** Draw the fixed frame and reset the displayed board cache. */
 static void draw_frame(void)
 {
-    console_write("\033[0m\033[2J\033[H\033[1;36mTETRIS\033[0m  |  Difficulty: ");
+    console_write("\033[0m\033[2J\033[H\033[1;36mTETRIS\033[0m | Difficulty: ");
     console_write(difficulty_labels[session.difficulty]);
     console_write("\r\n\r\n");
     draw_border();
@@ -104,12 +98,8 @@ static void draw_frame(void)
         console_write("\033[36m|\033[0m\r\n");
     }
     draw_border();
-    move_cursor(5, GUIDE_COLUMN);
-    console_write("\033[1;36mCONTROLS\033[0m");
-    for (unsigned row = 0; row < sizeof key_guide / sizeof key_guide[0]; ++row) {
-        move_cursor(7u + row, GUIDE_COLUMN);
-        console_write(key_guide[row]);
-    }
+    console_write("\033[36mMOVE\033[0m A/D or Left/Right  \033[36mTURN\033[0m W/Up\r\n");
+    console_write("\033[36mDROP\033[0m S/Down  \033[36mMENU\033[0m Q");
 }
 
 /** Paint a run of adjacent cells sharing a background color. */
@@ -154,16 +144,17 @@ static void draw_board(void)
 /** Update the score and the millisecond interval displayed under the title. */
 static void draw_status(void)
 {
-    move_cursor(2, 1);
-    console_write("\033[2KScore: ");
-    write_number(session.score);
-    console_write(" | Level: ");
-    write_number(tetris_level(&session));
-    console_write(" | Lines: ");
-    write_number(session.lines);
-    console_write(" | Drop: ");
+    move_cursor(1, DROP_COLUMN);
+    console_write("\033[KDrop: ");
     write_number(tetris_interval(&session));
     console_write(" ms");
+    move_cursor(2, 1);
+    console_write("\033[2KScore ");
+    write_number(session.score);
+    console_write(" L");
+    write_number(tetris_level(&session));
+    console_write(" Ln");
+    write_number(session.lines);
     shown_lines = session.lines;
 }
 
@@ -275,10 +266,11 @@ static void draw_game(void)
         draw_status();
     }
     draw_board();
-    move_cursor(RESULT_ROW, 1);
     if (session.lost) {
-        console_write("\033[31mGame over.\033[0m  Q - menu");
+        move_cursor(RESULT_ROW, 1);
+        console_write("\033[2K\033[31mGame over.\033[0m  Q - menu");
     }
+    move_cursor(RESULT_ROW, FRAME_WIDTH);
 
     new_frame = false;
     dirty = false;

@@ -11,19 +11,22 @@ def verify(trace):
     """Require the input effects, match results and ANSI colors in the UART log."""
     start = b"MCU Console Games"
     choose = b"Choose difficulty"
-    zero = b"\x1b[1;36m0\x1b[0m : \x1b[1;35m0"
+    zero = b"0\x1b[38;2;255;238;250m : \x1b[38;2;217;190;255m0"
     events = (
         start, choose, zero, b"L1  Easy", b"Serve -> CPU",
-        b"\x1b[08;02H\x1b[36;106m|",
-        b"\x1b[13;02H\x1b[36;106m|",
+        b"\x1b[08;02H\x1b[38;2;255;238;250m\x1b[48;2;255;119;191m ",
+        b"\x1b[13;02H\x1b[38;2;255;238;250m\x1b[48;2;255;119;191m ",
         b"YOUR POINT", b"Serve <- YOU", b"CPU POINT",
-        b"YOU WIN!", b"Final \x1b[1;36m5\x1b[0m : \x1b[1;35m4", b"N  Next level",
+        b"YOU WIN!", b"Final \x1b[38;2;255;119;191m5\x1b[38;2;255;238;250m : \x1b[38;2;217;190;255m4", b"N  Next level",
         zero, b"L2  Easy", b"W/S  Move", start,
         choose, zero, b"L1  Hard", start,
         choose, start,
         choose, zero, b"L1  Normal",
-        b"CPU WINS!", b"Final \x1b[1;36m0\x1b[0m : \x1b[1;35m5", start,
+        b"CPU WINS!", b"Final \x1b[38;2;255;119;191m0\x1b[38;2;255;238;250m : \x1b[38;2;217;190;255m5", start,
     )
+    menu_reset = b"\x1b[0m\x1b[2J\x1b[H\x1b[36m" + start
+    if trace.count(menu_reset) != 3:
+        raise ValueError("expected a terminal reset on each of the three exits from Pong")
     position = 0
     for event in events:
         found = trace.find(event, position)
@@ -31,10 +34,17 @@ def verify(trace):
             raise ValueError(f"missing {event!r} after byte {position}")
         position = found + len(event)
 
-    for color in (b"\x1b[1;97mO", b"\x1b[36;106m|", b"\x1b[35;105m|", b"\x1b[90m+"):
-        if color not in trace:
-            raise ValueError(f"missing ANSI color {color!r}")
-    print(f"Pong USART2: {len(events)} ordered events, 4 ANSI colors, {len(trace)} bytes")
+    colors = (
+        b"38;2;255;238;250", b"38;2;255;133;199", b"38;2;255;203;151",
+        b"38;2;255;119;191", b"38;2;217;190;255", b"48;2;24;15;39",
+        b"48;2;36;22;56", b"48;2;255;119;191", b"48;2;217;190;255",
+        b"48;2;112;63;162", b"48;2;220;84;155", b"48;2;255;172;123",
+    )
+    for color in colors:
+        if b"\x1b[" + color + b"m" not in trace:
+            raise ValueError(f"missing ANSI RGB color {color!r}")
+    print(f"Pong USART2: {len(events)} ordered events, {len(colors)} RGB roles, "
+          f"3 menu resets, {len(trace)} bytes")
 
 
 def main():

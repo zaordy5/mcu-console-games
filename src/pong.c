@@ -14,14 +14,22 @@
 #define CONTROLS_ROW (STATUS_ROW + 1)
 /** Left edge of the centered 17-cell scoreboard. */
 #define SCORE_COLUMN ((PONG_WIDTH + 2 - 17) / 2 + 1)
-/** Accent for the player's score and point notice. */
-#define PLAYER_COLOR "\033[1;36m"
-/** Accent for the computer's score and point notice. */
-#define CPU_COLOR "\033[1;35m"
-/** Dim color for the static court and its markings. */
-#define COURT_COLOR "\033[90m"
-/** Return to the terminal's default colors. */
-#define RESET_COLOR "\033[0m"
+/** ANSI RGB roles from the Minesweeper retro palette. */
+typedef enum {
+    INK, PINK, PEACH, PLAYER, CPU, BASE, FIELD, COURT, SUNSET_VIOLET,
+    SUNSET_PINK, SUNSET_PEACH, NO_COLOR
+} Color;
+
+/** Decimal RGB channels for ANSI SGR. */
+static const char *const rgb[] = {
+    [INK] = "255;238;250", [PINK] = "255;133;199", [PEACH] = "255;203;151",
+    [PLAYER] = "255;119;191", [CPU] = "217;190;255", [BASE] = "24;15;39",
+    [FIELD] = "36;22;56", [COURT] = "149;117;173", [SUNSET_VIOLET] = "112;63;162",
+    [SUNSET_PINK] = "220;84;155", [SUNSET_PEACH] = "255;172;123"
+};
+
+/** Active foreground and background written to the terminal. */
+static Color foreground = NO_COLOR, background = NO_COLOR;
 
 /** Current session controlled by the Game callbacks. */
 static Pong match;
@@ -31,6 +39,31 @@ static Pong drawn;
 static bool fresh_screen;
 /** Whether the user requested a return to the menu. */
 static bool exit_requested;
+
+/** Emit only RGB channels that changed. */
+static void style(Color fg, Color bg)
+{
+    if (fg != foreground) {
+        console_write("\033[38;2;");
+        console_write(rgb[fg]);
+        console_write("m");
+        foreground = fg;
+    }
+    if (bg != background) {
+        console_write("\033[48;2;");
+        console_write(rgb[bg]);
+        console_write("m");
+        background = bg;
+    }
+}
+
+/** Return the terminal to the shared menu's default style. */
+static void reset_style(void)
+{
+    console_write("\033[0m");
+    foreground = NO_COLOR;
+    background = NO_COLOR;
+}
 
 /** Move the ANSI cursor to a 1-based position with two decimal digits per axis. */
 static void cursor_at(unsigned row, unsigned column)
@@ -52,27 +85,39 @@ static void write_number(unsigned value)
 /** Write the score with the same accents as the two paddles. */
 static void write_score(void)
 {
-    console_write(PLAYER_COLOR);
+    style(PLAYER, BASE);
     write_number(match.player_score);
-    console_write(RESET_COLOR " : " CPU_COLOR);
+    style(INK, BASE);
+    console_write(" : ");
+    style(CPU, BASE);
     write_number(match.cpu_score);
-    console_write(RESET_COLOR);
 }
 
-/** Paint the centered score independently of the match settings. */
+/** Paint the centered score and the sunset strip to its right. */
 static void draw_score(void)
 {
     cursor_at(1, SCORE_COLUMN);
-    console_write("\033[2K" PLAYER_COLOR "YOU   " RESET_COLOR);
+    style(PLAYER, BASE);
+    console_write("\033[2KYOU   ");
     write_score();
-    console_write(CPU_COLOR "   CPU" RESET_COLOR);
+    console_write("   CPU");
+    cursor_at(1, PONG_WIDTH - 7);
+    style(INK, SUNSET_VIOLET);
+    console_write("   ");
+    style(INK, SUNSET_PINK);
+    console_write("   ");
+    style(INK, SUNSET_PEACH);
+    console_write("   ");
 }
 
 /** Paint the current level, difficulty and target score. */
 static void draw_settings(void)
 {
     cursor_at(2, 3);
-    console_write("\033[2K\033[1mPONG" RESET_COLOR "  |  L");
+    style(PINK, BASE);
+    console_write("\033[2KPONG");
+    style(INK, BASE);
+    console_write("  |  L");
     write_number(match.level);
     console_write("  ");
     switch (match.difficulty) {
@@ -80,17 +125,9 @@ static void draw_settings(void)
     case PONG_HARD: console_write("Hard"); break;
     default: console_write("Normal"); break;
     }
+    style(PEACH, BASE);
     console_write("  |  First to ");
     write_number(PONG_WIN_SCORE);
-}
-
-/** Skip cleared cells in the current terminal row without transmitting spaces. */
-static void cursor_right(unsigned columns)
-{
-    char code[] = {
-        '\033', '[', (char)('0' + columns / 10), (char)('0' + columns % 10), 'C', '\0'
-    };
-    console_write(code);
 }
 
 /** Return the court glyph that belongs under an empty playable cell. */
@@ -117,43 +154,64 @@ static void draw_border(void)
 /** Clear the screen and draw the fixed court and help text. */
 static void draw_field(void)
 {
-    console_write(RESET_COLOR "\033[2J\033[H\r\n\r\n" COURT_COLOR);
+    reset_style();
+    style(COURT, BASE);
+    console_write("\033[2J\033[H\r\n\r\n");
     draw_border();
     for (int y = 0; y < PONG_HEIGHT; ++y) {
-        console_write("|");
-        if (court_tile(PONG_WIDTH / 2, y) == '.') {
-            cursor_right(PONG_WIDTH / 2);
-            console_write(".");
-            cursor_right(PONG_WIDTH - PONG_WIDTH / 2 - 1);
-        } else {
-            cursor_right(PONG_WIDTH);
+        char row[PONG_WIDTH + 1];
+        for (int x = 0; x < PONG_WIDTH; ++x) {
+            row[x] = court_tile(x, y);
         }
+        row[PONG_WIDTH] = '\0';
+        console_write("|");
+        style(COURT, FIELD);
+        console_write(row);
+        style(COURT, BASE);
         console_write("|\r\n");
     }
     draw_border();
-    console_write(RESET_COLOR);
+}
+
+/** Restore the exact glyph and background of an occupied court cell. */
+static void restore_cell(int x, int y)
+{
+    cursor_at(FIELD_ROW + y, FIELD_COLUMN + x);
+    style(COURT, FIELD);
+    char tile[] = {court_tile(x, y), '\0'};
+    console_write(tile);
 }
 
 /** Show the point winner and next serve, or the final result. */
 static void draw_status(void)
 {
     cursor_at(STATUS_ROW, 1);
+    style(INK, BASE);
     console_write("\033[2K");
     switch (match.phase) {
     case PONG_SERVE:
         if (match.last_point == PONG_PLAYER_POINT) {
-            console_write(PLAYER_COLOR "YOUR POINT" RESET_COLOR "  |  ");
+            style(PLAYER, BASE);
+            console_write("YOUR POINT  |  ");
         } else if (match.last_point == PONG_CPU_POINT) {
-            console_write(CPU_COLOR "CPU POINT" RESET_COLOR "  |  ");
+            style(CPU, BASE);
+            console_write("CPU POINT  |  ");
         }
+        style(PEACH, BASE);
         console_write(match.dx > 0 ? "Serve -> CPU" : "Serve <- YOU");
         break;
     case PONG_WON:
-        console_write("\033[1;32mYOU WIN!" RESET_COLOR "  |  Final ");
+        style(PEACH, BASE);
+        console_write("YOU WIN!");
+        style(INK, BASE);
+        console_write("  |  Final ");
         write_score();
         break;
     case PONG_LOST:
-        console_write("\033[1;31mCPU WINS!" RESET_COLOR "  |  Final ");
+        style(CPU, BASE);
+        console_write("CPU WINS!");
+        style(INK, BASE);
+        console_write("  |  Final ");
         write_score();
         break;
     case PONG_RALLY:
@@ -165,6 +223,7 @@ static void draw_status(void)
 static void draw_controls(void)
 {
     cursor_at(CONTROLS_ROW, 1);
+    style(PEACH, BASE);
     console_write("\033[2K");
     if (match.phase == PONG_LOST) {
         console_write("Q  Menu");
@@ -183,18 +242,18 @@ static bool has_result(PongPhase phase)
 }
 
 /** Update a paddle, erasing only the cells that its movement left empty. */
-static void draw_paddle(unsigned column, int top, int old_top, const char *color)
+static void draw_paddle(int x, int top, int old_top, Color color)
 {
     for (int row = old_top; !fresh_screen && row < old_top + PONG_PADDLE_SIZE; ++row) {
         if (row < top || row >= top + PONG_PADDLE_SIZE) {
-            cursor_at(FIELD_ROW + row, column);
-            console_write(" ");
+            restore_cell(x, row);
         }
     }
     for (int row = top; row < top + PONG_PADDLE_SIZE; ++row) {
         if (fresh_screen || row < old_top || row >= old_top + PONG_PADDLE_SIZE) {
-            cursor_at(FIELD_ROW + row, column);
-            console_write(color);
+            cursor_at(FIELD_ROW + row, FIELD_COLUMN + x);
+            style(INK, color);
+            console_write(" ");
         }
     }
 }
@@ -220,7 +279,7 @@ static void key(char input)
     case 'w': case 'W': pong_move(&match, -1); break;
     case 's': case 'S': pong_move(&match, 1); break;
     case 'n': case 'N': pong_next_level(&match); break;
-    case 'q': case 'Q': exit_requested = true; break;
+    case 'q': case 'Q': reset_style(); exit_requested = true; break;
     }
 }
 
@@ -246,16 +305,16 @@ static void draw(void)
     if (fresh_screen || drawn.level != match.level) {
         draw_settings();
     }
-    draw_paddle(FIELD_COLUMN, match.player_y, drawn.player_y, "\033[36;106m|" RESET_COLOR);
-    draw_paddle(FIELD_COLUMN + PONG_WIDTH - 1, match.cpu_y, drawn.cpu_y, "\033[35;105m|" RESET_COLOR);
+    draw_paddle(0, match.player_y, drawn.player_y, PLAYER);
+    draw_paddle(PONG_WIDTH - 1, match.cpu_y, drawn.cpu_y, CPU);
 
     if (fresh_screen || drawn.ball_x != match.ball_x || drawn.ball_y != match.ball_y) {
         if (!fresh_screen) {
-            cursor_at(FIELD_ROW + drawn.ball_y, FIELD_COLUMN + drawn.ball_x);
-            console_write(court_tile(drawn.ball_x, drawn.ball_y) == '.' ? COURT_COLOR "." RESET_COLOR : " ");
+            restore_cell(drawn.ball_x, drawn.ball_y);
         }
         cursor_at(FIELD_ROW + match.ball_y, FIELD_COLUMN + match.ball_x);
-        console_write("\033[1;97mO" RESET_COLOR);
+        style(INK, FIELD);
+        console_write("O");
     }
     if (fresh_screen || drawn.phase != match.phase || drawn.level != match.level ||
         (match.phase == PONG_SERVE && score_changed)) {

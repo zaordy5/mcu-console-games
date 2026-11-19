@@ -1,0 +1,26 @@
+# CMake
+/build/
+/build-*/
+/cmake-build-*/
+/CMakeFiles/
+/CMakeCache.txt
+/cmake_install.cmake
+/compile_commands.json
+/CMakeUserPresets.json
+/CMakeScripts/
+/Testing/
+
+# Компиляция и прошивка
+*.o
+*.obj
+*.d
+*.elf
+*.hex
+*.bin
+*.map
+
+# Локальные файлы редакторов и ОС
+/.idea/
+*.swp
+.DS_Store
+Thumbs.db

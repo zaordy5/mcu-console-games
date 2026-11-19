@@ -23,11 +23,13 @@ start
 партии Сапёра снова откройте Сапёр и нажмите `U` на экране настройки поля.
 
 ```sh
+python3 tests/systick_renode.py build/games.elf
 python3 tests/menu_renode.py build/games.elf
 python3 tests/tetris_renode.py --elf build/games.elf --uart-log build/tetris.uart
 python3 tests/pong_renode.py build/games.elf
 ```
 
+Проверка SysTick сверяет 1000 тиков за секунду виртуального времени.
 Общая проверка выполняет один сеанс USART2. Она открывает три игры, проверяет
 перезапуск Тетриса, сохранение и продолжение Сапёра, отмену выбора сложности
 и совпадение главного меню до и после каждой игры. GitHub Actions собирает ELF

@@ -39,7 +39,7 @@ jobs:
           $renode = Get-ChildItem (Join-Path $env:LOCALAPPDATA 'SaperRenode\1.17.0') -Recurse -File -Filter 'renode.exe' |
             Select-Object -First 1
           $extra = @'
-          sysbus.usart2 CreateFileBackend @saper-windows.uart true
+          sysbus.usart2 CreateFileBackend @__UART_PATH__ true
           emulation RunFor "00:00:00.25"
           sysbus.usart2 WriteChar 50
           emulation RunFor "00:00:00.25"
@@ -51,10 +51,12 @@ jobs:
           emulation RunFor "00:00:00.25"
           quit
           '@
+          $uartPath = (Join-Path $PWD 'saper-windows.uart').Replace('\', '/')
+          $extra = $extra.Replace('__UART_PATH__', $uartPath)
           [IO.File]::WriteAllText((Join-Path $PWD 'check.resc'), (Get-Content saper.resc -Raw) + $extra + "`n")
           & $renode.FullName --disable-gui --hide-analyzers --plain check.resc
           if ($LASTEXITCODE -ne 0) { throw 'Windows Renode failed' }
-          $uart = Get-Content -Raw saper-windows.uart
+          $uart = Get-Content -Raw -LiteralPath $uartPath
           foreach ($marker in @('MCU Console Games', 'Choose difficulty', 'L1/3  Easy  Classic', 'Time 0s  Cell A1')) {
             if (-not $uart.Contains($marker)) { throw "Missing UART output: $marker" }
           }

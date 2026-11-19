@@ -67,6 +67,7 @@ jobs:
           }
           Write-Host 'Windows Renode booted the ELF and passed keyboard/ANSI checks.'
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: portable-renode-windows
           path: |

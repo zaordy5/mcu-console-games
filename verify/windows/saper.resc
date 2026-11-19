@@ -14,5 +14,5 @@ sysbus:
         Tag <0x50000010, 0x5000003f> "USB:RESET" 0x80000000
 """
 
-sysbus LoadELF @games.elf
+sysbus LoadELF $ORIGIN/games.elf
 showAnalyzer sysbus.usart2

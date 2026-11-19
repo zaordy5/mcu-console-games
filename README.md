@@ -4,7 +4,32 @@
 
 Three terminal games running from a single bare-metal STM32F407 firmware image. The shared launcher and games use a pink retrowave palette over USART2.
 
-![Pong running over USART2 in Renode](https://github.com/zaordy5/mcu-console-games/blob/2548bce57125fbf71523984c75d57144728bbbcf/pong-retrowave.png?raw=true)
+## Скриншоты / Screenshots
+
+[![Главное меню с тремя играми / Main menu with all three games](docs/screenshots/main-menu.png)](docs/screenshots/main-menu.png)
+
+<table>
+<tr>
+<td width="33%" valign="top"><strong>Тетрис / Tetris</strong><br><a href="docs/screenshots/tetris.png"><img src="docs/screenshots/tetris.png" alt="Поле, следующая фигура и тень приземления / Playfield, next piece, and ghost piece"></a><br>Поле, следующая фигура и тень приземления / Playfield, next piece, and ghost piece</td>
+<td width="33%" valign="top"><strong>Сапёр / Minesweeper</strong><br><a href="docs/screenshots/minesweeper.png"><img src="docs/screenshots/minesweeper.png" alt="Открытые клетки, координаты и счётчик мин / Revealed cells, coordinates, and mine counter"></a><br>Открытые клетки, координаты и счётчик мин / Revealed cells, coordinates, and mine counter</td>
+<td width="33%" valign="top"><strong>Пинг-понг / Pong</strong><br><a href="docs/screenshots/pong.png"><img src="docs/screenshots/pong.png" alt="Матч против компьютера, счёт 1:0 / Match against the CPU, score 1–0"></a><br>Матч против компьютера, счёт 1:0 / Match against the CPU, score 1–0</td>
+</tr>
+</table>
+
+### Возможности / Features
+
+<table>
+<tr>
+<td width="50%" valign="top"><strong>Выбор сложности / Difficulty selection</strong><br><a href="docs/screenshots/difficulty.png"><img src="docs/screenshots/difficulty.png" alt="Easy, Normal, Hard"></a><br>Easy, Normal, Hard</td>
+<td width="50%" valign="top"><strong>Очки в Тетрисе / Tetris scoring</strong><br><a href="docs/screenshots/tetris-line-clear.png"><img src="docs/screenshots/tetris-line-clear.png" alt="Четыре линии и +1600 очков / Four lines and +1600 points"></a><br>Четыре линии и +1600 очков / Four lines and +1600 points</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><strong>Продолжение в Сапёре / Resume in Minesweeper</strong><br><a href="docs/screenshots/minesweeper-resume.png"><img src="docs/screenshots/minesweeper-resume.png" alt="U continue — загрузка сохранённой партии / Restore a saved game"></a><br>U continue — загрузка сохранённой партии / Restore a saved game</td>
+<td width="50%" valign="top"><strong>Следующий уровень в Пинг-понге / Next level in Pong</strong><br><a href="docs/screenshots/pong-next-level.png"><img src="docs/screenshots/pong-next-level.png" alt="Победа 5:4 и клавиша N для перехода / Win 5–4 and press N to advance"></a><br>Победа 5:4 и клавиша N для перехода / Win 5–4 and press N to advance</td>
+</tr>
+</table>
+
+Меню и выбор сложности сняты в Renode. Игровые кадры восстановлены из вывода USART2 того же прогона. / The menu and difficulty screenshots were captured in Renode. Gameplay frames were rendered from the same run’s USART2 output. [Renode CI](https://github.com/zaordy5/mcu-console-games/actions/runs/44611936913)
 
 <details>
 <summary><strong>Русская версия</strong></summary>

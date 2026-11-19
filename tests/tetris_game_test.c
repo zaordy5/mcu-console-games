@@ -49,7 +49,7 @@ static void test_input_boundaries(void)
     tetris_game.start(GAME_NORMAL);
     tetris_game.draw();
     clear_output();
-    type_keys("\033[A\033[D\033[1;5D\033OA\033OD\033[5~");
+    type_keys("\033[5~\033OP\033OQ\033[6n");
     tetris_game.draw();
     assert(used == 0 && !tetris_game.finished());
     type_keys("\033Q");
@@ -78,8 +78,9 @@ static void test_game_callbacks(void)
     assert(strstr(output, "\033[2J\033[H"));
     assert(strstr(output, "Difficulty: Easy"));
     assert(strstr(output, "Score: 0 | Level: 1 | Lines: 0 | Drop: 850 ms"));
-    assert(strstr(output, "A/D Move | W Rotate | S Drop one row | Q Menu"));
-    assert(strstr(output, "\033[44m") || strstr(output, "\033[45m") ||
+    assert(strstr(output, "Move    A / D  or Left / Right"));
+    assert(strstr(output, "Rotate  W      or Up") && strstr(output, "Drop    S      or Down"));
+    assert(strstr(output, "\033[104m") || strstr(output, "\033[45m") ||
            strstr(output, "\033[46m") || strstr(output, "\033[43m") ||
            strstr(output, "\033[42m") || strstr(output, "\033[41m") ||
            strstr(output, "\033[47m"));
@@ -165,11 +166,10 @@ static void test_level_replay(void)
         const char *keys;
         int drops;
     } moves[] = {
-        {"aaaa", 17},     {"a", 17},      {"wwaaaa", 15},  {"dddddd", 17},
-        {"wwd", 16},      {"ddd", 16},    {"aa", 16},      {"wdddd", 16},
-        {"wwdddddd", 16}, {"dd", 17},     {"www", 16},     {"aaaa", 17},
-        {"ddd", 16},      {"waa", 16},    {"wwwaaa", 16},  {"wa", 16},
-        {"dddddd", 17}
+        {"", 17},      {"dddd", 17},  {"wwddd", 16},  {"aaaaa", 17},
+        {"aa", 17},    {"ddddd", 17}, {"wwaaaa", 16}, {"wwdd", 16},
+        {"wwddddd", 16}, {"ddddd", 15}, {"ddd", 16},    {"a", 17},
+        {"", 17},      {"aaaa", 17},  {"dd", 17},     {"aaaa", 17}
     };
 
     clear_output();
@@ -177,13 +177,18 @@ static void test_level_replay(void)
     tetris_game.draw();
     for (size_t piece = 0; piece < sizeof moves / sizeof moves[0]; ++piece) {
         clear_output();
-        type_keys(moves[piece].keys);
+        for (const char *key = moves[piece].keys; *key; ++key) {
+            tetris_game.key(*key);
+            if (*key == 'w') {
+                tetris_game.tick(180);
+            }
+        }
         for (int drop = 0; drop < moves[piece].drops; ++drop) {
             tetris_game.key('s');
         }
         tetris_game.draw();
         assert(!tetris_game.finished() && !strstr(output, "Game over."));
-        if (piece == 6) {
+        if (piece == 4) {
             assert(strstr(output, "Score: 100 | Level: 1 | Lines: 1 | Drop: 600 ms"));
         }
     }
@@ -199,12 +204,69 @@ static void test_level_replay(void)
     puts("PASS Game API: five lines by key input, score 500, Normal level 2 at 530 ms");
 }
 
+/** Compare cursor updates for the four arrow keys and the matching letters. */
+static void test_arrow_keys(void)
+{
+    const struct {
+        char letter;
+        const char *arrow;
+    } keys[] = {
+        {'A', "\033[D"}, {'D', "\033OC"}, {'W', "\033[1;5A"}, {'S', "\033[B"}
+    };
+    char letter_frame[sizeof output];
+    for (size_t i = 0; i < sizeof keys / sizeof keys[0]; ++i) {
+        tetris_game.start(GAME_NORMAL);
+        clear_output();
+        tetris_game.draw();
+        clear_output();
+        tetris_game.key(keys[i].letter);
+        tetris_game.draw();
+        assert(used != 0);
+        memcpy(letter_frame, output, used + 1);
+
+        tetris_game.start(GAME_NORMAL);
+        clear_output();
+        tetris_game.draw();
+        clear_output();
+        type_keys(keys[i].arrow);
+        tetris_game.draw();
+        assert(strcmp(output, letter_frame) == 0);
+    }
+    puts("PASS Game API: CSI and SS3 arrow sequences match WASD");
+}
+
+/** Flood the game with W and check the turn rate and the first gravity step. */
+static void test_rotation_repeat(void)
+{
+    tetris_game.start(GAME_EASY);
+    clear_output();
+    tetris_game.draw();
+    unsigned rotations = 0;
+    for (unsigned ms = 0; ms < 849; ++ms) {
+        clear_output();
+        tetris_game.key('W');
+        tetris_game.draw();
+        rotations += used != 0;
+        clear_output();
+        tetris_game.tick(1);
+        tetris_game.draw();
+        assert(used == 0);
+    }
+    assert(rotations == 5);
+    tetris_game.tick(1);
+    tetris_game.draw();
+    assert(used != 0);
+    puts("PASS Game API: repeated W turns at most every 180 ms; gravity drops at 850 ms");
+}
+
 /** Run all Game callback checks. */
 int main(void)
 {
     test_input_boundaries();
     test_game_callbacks();
     test_result_and_restart();
+    test_arrow_keys();
+    test_rotation_repeat();
     test_level_replay();
     return 0;
 }

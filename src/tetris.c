@@ -8,6 +8,10 @@
 #define FIELD_TOP 4
 /** Terminal row for the result or exit message. */
 #define RESULT_ROW (FIELD_TOP + TETRIS_HEIGHT + 2)
+/** First column of the key guide to the right of the board. */
+#define GUIDE_COLUMN (2 * TETRIS_WIDTH + 7)
+/** Minimum time between successful turns when the terminal repeats a held key. */
+#define ROTATION_INTERVAL_MS 180u
 
 /** Game session used by the synchronous firmware main loop. */
 static Tetris session;
@@ -21,6 +25,8 @@ static bool new_frame;
 static bool dirty;
 /** A session has started and the player has not returned to the menu. */
 static bool session_active;
+/** Time remaining before the next accepted turn, independent of gravity. */
+static uint32_t rotation_wait_ms;
 
 /** Input parser state for escape sequences emitted by the terminal. */
 typedef enum {
@@ -34,12 +40,20 @@ static InputState input_state;
 
 /** ANSI background colors keyed by the portable cell value. */
 static const char *const backgrounds[TETRIS_SHAPES + 1] = {
-    "\033[0m", "\033[46m", "\033[44m", "\033[45m",
-    "\033[43m", "\033[42m", "\033[41m", "\033[47m"
+    "\033[0m", "\033[46m", "\033[104m", "\033[43m",
+    "\033[47m", "\033[45m", "\033[42m", "\033[41m"
 };
 
 /** Display labels keyed by the portable starting difficulty. */
 static const char *const difficulty_labels[] = { "Easy", "Normal", "Hard" };
+
+/** Action and key pairs displayed to the right of the board. */
+static const char *const key_guide[] = {
+    "Move    A / D  or Left / Right",
+    "Rotate  W      or Up",
+    "Drop    S      or Down",
+    "Menu    Q"
+};
 
 /** Write an unsigned decimal number without a formatted I/O dependency. */
 static void write_number(uint32_t number)
@@ -67,30 +81,35 @@ static void move_cursor(unsigned row, unsigned column)
 /** Write a horizontal border spanning the current board width. */
 static void draw_border(void)
 {
-    console_write("+");
+    console_write("\033[36m+");
     for (int x = 0; x < TETRIS_WIDTH; ++x) {
         console_write("--");
     }
-    console_write("+\r\n");
+    console_write("+\033[0m\r\n");
 }
 
 /** Draw the fixed frame and reset the displayed board cache. */
 static void draw_frame(void)
 {
-    console_write("\033[0m\033[2J\033[H\033[36mTetris - Falling Blocks\033[0m  Difficulty: ");
+    console_write("\033[0m\033[2J\033[H\033[1;36mTETRIS\033[0m  |  Difficulty: ");
     console_write(difficulty_labels[session.difficulty]);
     console_write("\r\n\r\n");
     draw_border();
     for (int y = 0; y < TETRIS_HEIGHT; ++y) {
-        console_write("|");
+        console_write("\033[36m|\033[0m");
         for (int x = 0; x < TETRIS_WIDTH; ++x) {
             console_write("  ");
             shown[y][x] = 0;
         }
-        console_write("|\r\n");
+        console_write("\033[36m|\033[0m\r\n");
     }
     draw_border();
-    console_write("A/D Move | W Rotate | S Drop one row | Q Menu\r\n");
+    move_cursor(5, GUIDE_COLUMN);
+    console_write("\033[1;36mCONTROLS\033[0m");
+    for (unsigned row = 0; row < sizeof key_guide / sizeof key_guide[0]; ++row) {
+        move_cursor(7u + row, GUIDE_COLUMN);
+        console_write(key_guide[row]);
+    }
 }
 
 /** Paint a run of adjacent cells sharing a background color. */
@@ -162,9 +181,10 @@ static void start_game(GameDifficulty difficulty)
     dirty = true;
     session_active = true;
     input_state = INPUT_KEY;
+    rotation_wait_ms = 0;
 }
 
-/** Filter ANSI control sequences so arrow and function keys cannot act as letters. */
+/** Decode ANSI arrows and discard unrelated terminal sequences. */
 static char filter_key(char key)
 {
     if (key == '\033') {
@@ -172,11 +192,17 @@ static char filter_key(char key)
         return '\0';
     }
     if (input_state == INPUT_SEQUENCE) {
-        /* CSI parameters and intermediate bytes are in the same ASCII range. */
-        if (key < ' ' || key > '?') {
-            input_state = INPUT_KEY;
+        if (key >= ' ' && key <= '?') {
+            return '\0';
         }
-        return '\0';
+        input_state = INPUT_KEY;
+        switch (key) {
+        case 'A': return 'w';
+        case 'B': return 's';
+        case 'C': return 'd';
+        case 'D': return 'a';
+        default: return '\0';
+        }
     }
     if (input_state == INPUT_ESCAPE) {
         if (key == '[' || key == 'O') {
@@ -213,7 +239,10 @@ static void handle_key(char key)
         break;
     case 'w':
     case 'W':
-        dirty |= tetris_rotate(&session);
+        if (rotation_wait_ms == 0 && tetris_rotate(&session)) {
+            dirty = true;
+            rotation_wait_ms = ROTATION_INTERVAL_MS;
+        }
         break;
     case 's':
     case 'S':
@@ -228,6 +257,7 @@ static void handle_key(char key)
 static void tick_game(uint32_t elapsed_ms)
 {
     if (session_active) {
+        rotation_wait_ms = elapsed_ms >= rotation_wait_ms ? 0 : rotation_wait_ms - elapsed_ms;
         dirty |= tetris_tick(&session, elapsed_ms);
     }
 }

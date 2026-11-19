@@ -29,7 +29,7 @@ typedef struct {
     uint32_t lines;        /**< Total full rows removed. */
     uint32_t random;       /**< Nonzero xorshift state. */
     uint32_t until_drop;   /**< Milliseconds until the next gravity step. */
-    uint16_t shape;        /**< Active shape bitmap in a row-major 3x3 box. */
+    uint16_t shape;        /**< Active shape bitmap in a row-major 4x4 box. */
     TetrisDifficulty difficulty; /**< Starting gravity setting. */
     int x;                 /**< Left edge of the active shape box. */
     int y;                 /**< Top edge of the active shape box. */
@@ -48,7 +48,7 @@ void tetris_reset(Tetris *game, TetrisDifficulty difficulty, uint32_t seed);
 /** Move one column left (-1) or right (1) if the destination is free. */
 bool tetris_move(Tetris *game, int direction);
 
-/** Try a clockwise rotation about the center of the shape box. */
+/** Try a clockwise rotation around the active piece's center. */
 bool tetris_rotate(Tetris *game);
 
 /** Advance the piece one row immediately, locking it if blocked. */

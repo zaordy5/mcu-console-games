@@ -7,12 +7,12 @@
 #include <limits.h>
 #include <stdio.h>
 
-/** Three-cell bar oriented horizontally in the middle row. */
-#define BAR_HORIZONTAL 0x038u
-/** Three-cell bar oriented vertically in the middle column. */
-#define BAR_VERTICAL 0x092u
+/** Straight tetromino occupying the second row of a 4×4 box. */
+#define BAR_HORIZONTAL 0x00f0u
+/** Straight tetromino after one clockwise turn. */
+#define BAR_VERTICAL 0x4444u
 
-/** Put a three-cell bar in a known position on an empty board. */
+/** Put a straight tetromino in a known position on an empty board. */
 static void place_bar(Tetris *game, uint16_t shape, int x, int y)
 {
     tetris_reset(game, TETRIS_NORMAL, 1);
@@ -37,20 +37,21 @@ static void test_movement_and_rotation(void)
     place_bar(&game, BAR_HORIZONTAL, 0, 3);
     assert(!tetris_move(&game, -1) && game.x == 0);
     assert(tetris_move(&game, 1) && game.x == 1);
-    game.board[4][4] = 2;
+    game.board[4][5] = 2;
     assert(!tetris_move(&game, 1) && game.x == 1);
-    game.board[5][2] = 2;
+    game.board[5][3] = 2;
     assert(!tetris_rotate(&game) && game.shape == BAR_HORIZONTAL);
-    game.board[5][2] = 0;
+    game.board[5][3] = 0;
     assert(tetris_rotate(&game) && game.shape == BAR_VERTICAL);
-    assert(tetris_cell(&game, 2, 3) == 1 && game.board[3][2] == 0);
+    assert(tetris_cell(&game, 3, 3) == 1 && game.board[3][3] == 0);
     assert(tetris_move(&game, -1));
-    assert(tetris_move(&game, -1) && game.x == -1);
+    assert(tetris_move(&game, -1));
+    assert(tetris_move(&game, -1) && game.x == -2);
     assert(!tetris_move(&game, -1));
-    assert(!tetris_rotate(&game) && game.shape == BAR_VERTICAL && game.x == -1);
+    assert(!tetris_rotate(&game) && game.shape == BAR_VERTICAL && game.x == -2);
 
-    place_bar(&game, BAR_HORIZONTAL, TETRIS_WIDTH - 3, TETRIS_HEIGHT - 2);
-    assert(!tetris_move(&game, 1) && game.x == TETRIS_WIDTH - 3);
+    place_bar(&game, BAR_HORIZONTAL, TETRIS_WIDTH - 4, TETRIS_HEIGHT - 2);
+    assert(!tetris_move(&game, 1) && game.x == TETRIS_WIDTH - 4);
     assert(!tetris_rotate(&game) && game.shape == BAR_HORIZONTAL);
     puts("PASS movement and rotation: walls, floor, settled cells");
 }
@@ -64,7 +65,7 @@ static void test_lock(void)
     assert(game.y == TETRIS_HEIGHT - 2 && game.board[TETRIS_HEIGHT - 1][3] == 0);
     assert(tetris_tick(&game, 600));
     assert(game.y == 0 && !game.lost);
-    for (int x = 3; x <= 5; ++x) {
+    for (int x = 3; x <= 6; ++x) {
         assert(game.board[TETRIS_HEIGHT - 1][x] == 1);
     }
 
@@ -80,31 +81,31 @@ static void test_clear_rows(void)
 {
     Tetris game;
     place_bar(&game, BAR_HORIZONTAL, 4, TETRIS_HEIGHT - 2);
-    fill_except(&game, TETRIS_HEIGHT - 1, 4, 6);
+    fill_except(&game, TETRIS_HEIGHT - 1, 4, 7);
     game.board[TETRIS_HEIGHT - 2][0] = 7;
     assert(tetris_soft_drop(&game));
     assert(game.lines == 1 && game.score == 100);
     assert(game.board[TETRIS_HEIGHT - 1][0] == 7 && game.board[TETRIS_HEIGHT - 1][4] == 0);
 
-    place_bar(&game, BAR_VERTICAL, 4, TETRIS_HEIGHT - 3);
-    fill_except(&game, TETRIS_HEIGHT - 3, 5, 5);
-    fill_except(&game, TETRIS_HEIGHT - 1, 5, 5);
+    place_bar(&game, BAR_VERTICAL, 4, TETRIS_HEIGHT - 4);
+    fill_except(&game, TETRIS_HEIGHT - 4, 6, 6);
+    fill_except(&game, TETRIS_HEIGHT - 1, 6, 6);
     game.board[TETRIS_HEIGHT - 2][0] = 6;
-    game.board[TETRIS_HEIGHT - 4][1] = 7;
+    game.board[TETRIS_HEIGHT - 3][1] = 7;
     game.board[0][0] = 3;
     assert(tetris_soft_drop(&game));
     assert(game.lines == 2 && game.score == 400 && !game.lost);
-    assert(game.board[TETRIS_HEIGHT - 1][0] == 6 && game.board[TETRIS_HEIGHT - 1][5] == 1);
+    assert(game.board[TETRIS_HEIGHT - 1][0] == 6 && game.board[TETRIS_HEIGHT - 1][6] == 1);
     assert(game.board[TETRIS_HEIGHT - 2][1] == 7);
     assert(game.board[0][0] == 0 && game.board[1][0] == 0 && game.board[2][0] == 3);
 
-    place_bar(&game, BAR_VERTICAL, 4, TETRIS_HEIGHT - 3);
-    for (int y = TETRIS_HEIGHT - 3; y < TETRIS_HEIGHT; ++y) {
-        fill_except(&game, y, 5, 5);
+    place_bar(&game, BAR_VERTICAL, 4, TETRIS_HEIGHT - 4);
+    for (int y = TETRIS_HEIGHT - 4; y < TETRIS_HEIGHT; ++y) {
+        fill_except(&game, y, 6, 6);
     }
     assert(tetris_soft_drop(&game));
-    assert(game.lines == 3 && game.score == 900 && game.board[TETRIS_HEIGHT - 1][5] == 0);
-    puts("PASS line clearing: one, two separated, and three adjacent rows");
+    assert(game.lines == 4 && game.score == 1600 && game.board[TETRIS_HEIGHT - 1][6] == 0);
+    puts("PASS line clearing: one, two separated, and four adjacent rows");
 }
 
 /** Check blocked spawning, frozen game over, a clean restart, and the shuffled bag. */
@@ -165,7 +166,7 @@ static void test_gravity(void)
 
     place_bar(&normal, BAR_HORIZONTAL, 4, TETRIS_HEIGHT - 2);
     normal.lines = 4;
-    fill_except(&normal, TETRIS_HEIGHT - 1, 4, 6);
+    fill_except(&normal, TETRIS_HEIGHT - 1, 4, 7);
     assert(tetris_level(&normal) == 1 && tetris_interval(&normal) == 600);
     assert(tetris_tick(&normal, 610));
     assert(normal.lines == 5 && tetris_level(&normal) == 2 && tetris_interval(&normal) == 530);
@@ -193,6 +194,34 @@ static void test_api_boundaries(void)
     puts("PASS API boundaries: invalid difficulty, coordinates, and direction");
 }
 
+/** Check all seven spawn shapes and that clockwise turns preserve four cells. */
+static void test_tetrominoes(void)
+{
+    const uint16_t expected[] = {0x00f0, 0x0071, 0x0074, 0x0066, 0x0072, 0x0036, 0x0063};
+    unsigned seen = 0;
+    for (uint32_t seed = 1; seed <= 64; ++seed) {
+        Tetris game;
+        tetris_reset(&game, TETRIS_NORMAL, seed);
+        unsigned index = game.color - 1u;
+        assert(index < sizeof expected / sizeof expected[0]);
+        assert(game.shape == expected[index]);
+        seen |= 1u << index;
+        for (int turn = 0; turn < 4; ++turn) {
+            unsigned count = 0;
+            for (int y = 0; y < 4; ++y) {
+                for (int x = 0; x < TETRIS_WIDTH; ++x) {
+                    count += tetris_cell(&game, x, y) != 0;
+                }
+            }
+            assert(count == 4);
+            assert(tetris_rotate(&game) == (game.color != 4));
+        }
+        assert(game.shape == expected[index]);
+    }
+    assert(seen == (1u << TETRIS_SHAPES) - 1u);
+    puts("PASS seven tetrominoes: four cells per piece through all rotations");
+}
+
 /** Run all portable game checks. */
 int main(void)
 {
@@ -202,5 +231,6 @@ int main(void)
     test_loss_and_restart();
     test_gravity();
     test_api_boundaries();
+    test_tetrominoes();
     return 0;
 }

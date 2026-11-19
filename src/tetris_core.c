@@ -3,8 +3,12 @@
  */
 #include "tetris_core.h"
 
-/** Side length of the row-major shape bitmap. */
-#define SHAPE_SIDE 3
+/** Row stride and maximum side length of the shape bitmap. */
+#define SHAPE_SIDE 4
+/** Rotation box side for the pieces that turn around a center cell. */
+#define CENTERED_SIDE 3
+/** Color index of the straight piece, which rotates in a 4×4 box. */
+#define STRAIGHT_COLOR 1u
 /** Lines cleared per level. */
 #define LINES_PER_LEVEL 5u
 /** Milliseconds subtracted from the drop interval per level. */
@@ -14,7 +18,7 @@
 /** Score multiplier for the square of the number of rows cleared together. */
 #define LINE_SCORE 100u
 /** Square bitmap; turning this piece leaves its cells in place. */
-#define SQUARE_SHAPE 0x01bu
+#define SQUARE_SHAPE 0x0066u
 
 /** Initial gravity in milliseconds, indexed by difficulty. */
 static const uint16_t initial_ms[] = {
@@ -23,15 +27,15 @@ static const uint16_t initial_ms[] = {
     [TETRIS_HARD] = 350
 };
 
-/** Spawn bitmaps in low-to-high row-major bit order. Each index has its own color. */
+/** Spawn bitmaps of the seven tetrominoes in low-to-high row-major bit order. */
 static const uint16_t shapes[TETRIS_SHAPES] = {
-    0x038,        /* Bar:    ... / ### / ... */
-    0x032,        /* Corner: .#. / .## / ... */
-    0x03a,        /* Tee:    .#. / ### / ... */
-    SQUARE_SHAPE, /* Square: ##. / ##. / ... */
-    0x03d,        /* Cup:    #.# / ### / ... */
-    0x133,        /* Stair:  ##. / .## / ..# */
-    0x0ba,        /* Cross:  .#. / ### / .#. */
+    [STRAIGHT_COLOR - 1u] = 0x00f0, /* I: .... / #### */
+    0x0071,                       /* J: #... / ###. */
+    0x0074,                       /* L: ..#. / ###. */
+    SQUARE_SHAPE,                 /* O: .##. / .##. */
+    0x0072,                       /* T: .#.. / ###. */
+    0x0036,                       /* S: .##. / ##.. */
+    0x0063,                       /* Z: ##.. / .##. */
 };
 
 /** Test the local cell at (x, y) in a shape bitmap. */
@@ -180,11 +184,12 @@ bool tetris_rotate(Tetris *game)
     if (game->lost || game->shape == SQUARE_SHAPE) {
         return false;
     }
+    int side = game->color == STRAIGHT_COLOR ? SHAPE_SIDE : CENTERED_SIDE;
     uint16_t rotated = 0;
-    for (int y = 0; y < SHAPE_SIDE; ++y) {
-        for (int x = 0; x < SHAPE_SIDE; ++x) {
+    for (int y = 0; y < side; ++y) {
+        for (int x = 0; x < side; ++x) {
             if (contains(game->shape, x, y)) {
-                rotated |= (uint16_t)(1u << (x * SHAPE_SIDE + (SHAPE_SIDE - 1 - y)));
+                rotated |= (uint16_t)(1u << (x * SHAPE_SIDE + (side - 1 - y)));
             }
         }
     }

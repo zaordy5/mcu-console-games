@@ -109,12 +109,12 @@ static void test_match(void)
     place_ball(&pong, 15, 7, 1, 1);
     pong.ball_wait_ms = second;
     pong_tick(&pong, first - 1);
-    assert(first == 108 && second == 101 && pong.ball_x == 16);
+    assert(first == 90 && second == 84 && pong.ball_x == 16);
     printf("Ball moves one cell every %u ms at level 1, %u ms at level 2\n",
            (unsigned)first, (unsigned)second);
 
     pong.level = PONG_MAX_LEVEL;
-    assert(pong_ball_interval(&pong) == 45);
+    assert(pong_ball_interval(&pong) == 36);
     pong.phase = PONG_WON;
     assert(!pong_next_level(&pong));
     pong_start(&pong, PONG_EASY);
@@ -166,7 +166,7 @@ int main(void)
     unsigned easy = first_cpu_move(PONG_EASY);
     unsigned normal = first_cpu_move(PONG_NORMAL);
     unsigned hard = first_cpu_move(PONG_HARD);
-    assert(easy == 480 && normal == 288 && hard == 210);
+    assert(easy == 400 && normal == 240 && hard == 175);
     printf("First CPU move: Easy %u ms, Normal %u ms, Hard %u ms\n", easy, normal, hard);
     puts("Pong core checks passed");
 }

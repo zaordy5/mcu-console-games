@@ -18,7 +18,7 @@
 /** Final level, with the shortest ball interval. */
 #define PONG_MAX_LEVEL 10
 /** Pause with the ball in the center before each serve. */
-#define PONG_SERVE_MS 720
+#define PONG_SERVE_MS 600
 
 /** Opponent reaction settings, independent of the console interface. */
 typedef enum { PONG_EASY, PONG_NORMAL, PONG_HARD } PongDifficulty;

@@ -35,7 +35,7 @@ static void test_serve_marker(void)
     pong_game.start(GAME_EASY);
     draw_frame();
     assert(strstr(output, "Serve -> CPU"));
-    pong_game.tick(2771);
+    pong_game.tick(2309);
     draw_frame();
     assert(!strstr(output, "YOUR POINT"));
     pong_game.tick(1);
@@ -43,11 +43,11 @@ static void test_serve_marker(void)
     assert(strstr(output, "1\033[38;2;255;238;250m : \033[38;2;217;190;255m0") && strstr(output, "Serve <- YOU"));
     assert(strstr(output, "YOUR POINT"));
     assert(strstr(output, "\033[12;22H\033[38;2;255;238;250mO"));
-    pong_game.tick(828);
+    pong_game.tick(690);
     draw_frame();
     assert(strstr(output, "\033[12;22H\033[38;2;149;117;173m\033[48;2;36;22;56m."));
     assert(!strstr(output, "YOUR POINT"));
-    pong_game.tick(2052);
+    pong_game.tick(1710);
     draw_frame();
     assert(strstr(output, "CPU POINT") && strstr(output, "Serve -> CPU"));
 }
@@ -79,7 +79,7 @@ int main(void)
     pong_game.key('s');
     draw_frame();
     assert(strstr(output, "\033[13;02H\033[38;2;255;238;250m\033[48;2;255;119;191m "));
-    pong_game.tick(27000);
+    pong_game.tick(22000);
     draw_frame();
     assert(strstr(output, "YOU WIN!") && strstr(output, "N  Next level"));
     assert(strstr(output, "Final \033[38;2;255;119;191m5\033[38;2;255;238;250m : \033[38;2;217;190;255m4"));
@@ -98,7 +98,7 @@ int main(void)
     for (unsigned key = 0; key < 16; ++key) {
         pong_game.key('w');
     }
-    pong_game.tick(72000);
+    pong_game.tick(60000);
     draw_frame();
     assert(strstr(output, "CPU WINS!") && strstr(output, "Q  Menu"));
     assert(!strstr(output, "N  Next level") && !strstr(output, "W/S  Move"));

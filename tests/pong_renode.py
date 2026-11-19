@@ -78,7 +78,7 @@ def main():
             "-e", 'emulation RunFor "00:00:00.15"',
         ]
         for key in "31Wsnq33Q3Q32Q":
-            delay = {"s": 27, "2": 29}.get(key)
+            delay = {"s": 22, "2": 24}.get(key)
             duration = "00:00:00.15" if delay is None else f"00:00:{delay:02d}.00"
             command.extend([
                 "-e", f"sysbus.usart2 WriteChar {ord(key)}",

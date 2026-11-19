@@ -6,9 +6,9 @@
 /** Top row for a vertically centered paddle. */
 #define PADDLE_CENTER ((PONG_HEIGHT - PONG_PADDLE_SIZE) / 2)
 /** Milliseconds per ball step at level one. */
-#define BALL_INITIAL_MS 108
+#define BALL_INITIAL_MS 90
 /** Reduction in the ball step interval at each successive level. */
-#define BALL_LEVEL_STEP_MS 7
+#define BALL_LEVEL_STEP_MS 6
 /** Maximum number of cells the CPU can project ahead. */
 #define CPU_LOOKAHEAD 5
 
@@ -28,9 +28,9 @@ static int paddle_move(int top, int direction)
 static uint16_t cpu_interval(PongDifficulty difficulty)
 {
     switch (difficulty) {
-    case PONG_EASY: return 480;
-    case PONG_HARD: return 210;
-    default: return 288;
+    case PONG_EASY: return 400;
+    case PONG_HARD: return 175;
+    default: return 240;
     }
 }
 

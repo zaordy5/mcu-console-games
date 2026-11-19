@@ -40,6 +40,8 @@ bool mines_board_logic_allowed(const MinesBoard *board);
 void mines_board_reset(MinesBoard *board, uint8_t side, uint8_t mine_count);
 /** Place mines outside the first cell and all of its neighbors using the given seed. */
 void mines_board_generate(MinesBoard *board, uint8_t first, uint32_t seed, MinesLayout layout);
+/** Collect the neighbors of a valid cell in row-major order. */
+unsigned mines_adjacent(const MinesBoard *board, uint8_t index, uint8_t neighbors[8]);
 /** Count mines adjacent to a valid cell, excluding the cell itself. */
 uint8_t mines_neighbors(const MinesBoard *board, uint8_t index);
 /** Toggle a flag on a closed cell. Return true if the flag changed. */

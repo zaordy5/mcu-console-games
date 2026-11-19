@@ -101,6 +101,16 @@ static void apply_result(MinesResult result)
     }
 }
 
+/** Reveal the first cell on an existing layout and start visual feedback. */
+static void reveal_first(MinesRun *run)
+{
+    run->cursor = run->first;
+    apply_result(mines_open(&run->board, run->first));
+    if (session.screen == MINES_PLAY) {
+        mines_view_first_reveal();
+    }
+}
+
 /** Generate a candidate and accept it only if the solver clears it. */
 static void search_step(void)
 {
@@ -113,7 +123,7 @@ static void search_step(void)
     mines_board_generate(&run->board, run->first, run->seed, run->layout);
     if (mines_board_solvable(&run->board, run->first)) {
         show(MINES_PLAY);
-        apply_result(mines_open(&run->board, run->first));
+        reveal_first(run);
         return;
     }
 
@@ -151,6 +161,9 @@ static void tick(uint32_t elapsed_ms)
     if (session.screen == MINES_SEARCH) {
         search_step();
     } else if (session.screen == MINES_PLAY && run->board.generated) {
+        if (mines_view_tick(elapsed_ms)) {
+            session.dirty = true;
+        }
         uint32_t previous_ms = run->played_ms;
         uint32_t next = previous_ms + elapsed_ms;
         run->played_ms = next >= previous_ms ? next : UINT32_MAX;
@@ -201,8 +214,7 @@ static char decode_key(char key)
 static void open_first(MinesRun *run)
 {
     mines_board_generate(&run->board, run->first, run->seed, run->layout);
-    run->cursor = run->first;
-    apply_result(mines_open(&run->board, run->first));
+    reveal_first(run);
 }
 
 /** Open the cursor, starting generation if it is the first action. */

@@ -31,9 +31,13 @@ typedef struct {
 
 /** Forget which cells the terminal contains before changing external screens. */
 void mines_view_invalidate(void);
+/** Briefly tint newly opened terrain after a field's first move. */
+void mines_view_first_reveal(void);
+/** Advance visual feedback and return true when it expires. */
+bool mines_view_tick(uint32_t elapsed_ms);
 /** Draw the board, coordinates, and status, replacing only changed cells where possible. */
 void mines_view_board(const MinesRun *run, MinesScreen screen, bool can_resume, bool search_failed);
-/** Update the counter, clock and coordinate row without moving or clearing the board. */
+/** Update the clock in the side panel without clearing the board. */
 void mines_view_hud(const MinesRun *run);
 /** Hide the field and show the pause controls and frozen time. */
 void mines_view_pause(const MinesRun *run);

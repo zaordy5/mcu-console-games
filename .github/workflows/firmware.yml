@@ -70,7 +70,7 @@ jobs:
           send_keys 50 51 103 32
           args+=(-e 'emulation RunFor "00:00:02"')
           send_keys 113 50 50 99 51 50 56 13 108
-          layout='8/16/0/1013904242/0'
+          layout='12/25/74/1013904242/0'
           # Rapid input also exercises the form's delayed echo.
           for ((index=0; index < ${#layout}; ++index)); do
             printf -v byte '%d' "'${layout:index:1}"
@@ -97,27 +97,32 @@ jobs:
           for frame, label in zip(frames, labels):
               assert label in frame and b"\x1b[0m" in frame, (label, frame[:300])
           easy, resume, hard, custom = (frames[i] for i in (5, 8, 11, 14))
-          selected = b"\x1b[97;44m"
+          selected = b"\x1b[48;2;255;119;191m"
           assert selected + b"[F]" in easy and selected + b"[?]" in easy
-          assert b"Left 6" in easy and b"Left 7" in easy and b"Cell B1" in easy
+          assert b"Mines left 6/7" in easy and b"Mines left 7/7" in easy and b"Cell B1" in easy
           assert selected + b"[ ]" in easy, "The first open must be safe and blank"
-          played_times = re.findall(rb"Time (\d+)s  Cell A1", easy)
-          stopped = re.search(rb"Minesweeper paused\x1b\[0m\r?\nTime (\d+)s", easy)
-          assert stopped, easy[-500:]
+          assert b"\x1b[48;2;106;48;94m" in easy, "The first open should flash"
+          played, paused = easy.split(b"Minesweeper paused", 1)
+          played_times = re.findall(rb"Time (\d{2}:\d{2})", played)
+          stopped = re.search(rb"Time (\d{2}:\d{2})", paused)
+          assert played_times and stopped, easy[-500:]
           before_pause = played_times[-1]
           restored_frame = resume.split(b"L1/3  Easy  Classic", 1)[1]
-          restored = re.search(rb"Time (\d+)s  Cell A1", restored_frame)
-          assert restored, restored_frame[:180]
+          restored = re.search(rb"Time (\d{2}:\d{2})", restored_frame)
+          assert restored and b"Cell A1" in restored_frame, restored_frame[:180]
           print(f"Clock at the last game frame, pause and resume: "
-                f"{before_pause.decode()}, {stopped[1].decode()}, {restored[1].decode()} seconds")
-          assert before_pause == stopped[1] == restored[1] == b"1"
-          assert b"\x1b[95;40m ? " not in resume, "The first open should clear the question mark"
-          assert selected + b"[ ]" in hard
-          assert b"Layout search failed" not in hard
-          assert b"Enter mine count (1-135)" in custom and b"Mines 28  Left 28" in custom
-          assert b" I  J  K  L " in custom
-          assert b"Load layout" in custom and b"Mines 16  Left 16  Time 0s  Cell A1" in custom
-          assert b"\x1b[94;40m 1 " in custom and b"\x1b[92;40m 2 " in custom
+                f"{before_pause.decode()}, {stopped[1].decode()}, {restored[1].decode()}")
+          assert before_pause == stopped[1] == restored[1] == b"00:01"
+          assert b"\x1b[38;2;217;190;255m\x1b[48;2;89;39;81m ?" not in restored_frame, (
+              "The first open should clear the question mark"
+          )
+          assert selected + b"[ ]" in hard and b"Layout search failed" not in hard
+          assert b"Enter mine count (1-135)" in custom and b"Mines left 28/28" in custom
+          assert b"\x1b[3;38HL" in custom
+          assert b"Load layout" in custom
+          shared = custom.split(b"Shared layout", 1)[1]
+          assert b"Mines left 25/25" in shared and b"Cell C7" in shared
+          assert b"\x1b[38;2;255;203;151m" in shared and b"\x1b[38;2;255;133;199m" in shared
           Path("minesweeper.uart").write_bytes(clear + custom)
           PY
           xvfb-run -a sh -ec 'xterm -T "Minesweeper UART" -geometry 64x20 -fa Monospace -fs 14 -e sh -c "cat minesweeper.uart; sleep 8" & sleep 2; import -window "Minesweeper UART" menu.png'

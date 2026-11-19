@@ -91,7 +91,7 @@ void mines_board_generate(MinesBoard *board, uint8_t first, uint32_t seed, Mines
 }
 
 /** Collect valid neighbors of a cell, including diagonals. */
-static unsigned adjacent(const MinesBoard *board, uint8_t index, uint8_t neighbors[8])
+unsigned mines_adjacent(const MinesBoard *board, uint8_t index, uint8_t neighbors[8])
 {
     int x = index % board->side;
     int y = index / board->side;
@@ -125,7 +125,7 @@ static unsigned count_matching(const MinesBoard *board, const uint8_t *neighbors
 uint8_t mines_neighbors(const MinesBoard *board, uint8_t index)
 {
     uint8_t neighbors[8];
-    unsigned count = adjacent(board, index, neighbors);
+    unsigned count = mines_adjacent(board, index, neighbors);
     return count_matching(board, neighbors, count, CELL_MINE);
 }
 
@@ -182,7 +182,7 @@ static void reveal(MinesBoard *board, uint8_t index)
             continue;
         }
         uint8_t neighbors[8];
-        unsigned count = adjacent(board, cell, neighbors);
+        unsigned count = mines_adjacent(board, cell, neighbors);
         for (unsigned i = 0; i < count; ++i) {
             uint8_t neighbor = neighbors[i];
             if (!(board->cells[neighbor] & (CELL_OPEN | CELL_FLAG | CELL_MINE))) {
@@ -205,7 +205,7 @@ MinesResult mines_open(MinesBoard *board, uint8_t index)
     } else {
         unsigned number = mines_neighbors(board, index);
         uint8_t neighbors[8];
-        unsigned count = adjacent(board, index, neighbors);
+        unsigned count = mines_adjacent(board, index, neighbors);
         if (number == 0 || count_matching(board, neighbors, count, CELL_FLAG) != number) {
             return MINES_NO_CHANGE;
         }
@@ -225,7 +225,7 @@ MinesResult mines_open(MinesBoard *board, uint8_t index)
 static bool deduce(MinesBoard *board, uint8_t cell)
 {
     uint8_t neighbors[8];
-    unsigned count = adjacent(board, cell, neighbors);
+    unsigned count = mines_adjacent(board, cell, neighbors);
     unsigned flagged = count_matching(board, neighbors, count, CELL_FLAG);
     unsigned opened = count_matching(board, neighbors, count, CELL_OPEN);
     unsigned unknown = count - flagged - opened;
@@ -260,7 +260,7 @@ static unsigned unknown_neighbors(const MinesBoard *board, uint8_t cell,
                                   uint8_t unknown[8], unsigned *mines)
 {
     uint8_t neighbors[8];
-    unsigned count = adjacent(board, cell, neighbors);
+    unsigned count = mines_adjacent(board, cell, neighbors);
     unsigned hidden = 0;
     *mines = mines_neighbors(board, cell) - count_matching(board, neighbors, count, CELL_FLAG);
     for (unsigned i = 0; i < count; ++i) {

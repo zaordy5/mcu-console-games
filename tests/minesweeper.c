@@ -6,18 +6,25 @@
 #include "minesweeper.h"
 
 /** Last frame captured by the host UART substitute. */
-static char frame[4096];
+static char frame[16384];
+static size_t frame_len;
+
+#define CURSOR_STYLE "\033[48;2;255;119;191m"
+#define FIRST_REVEAL_STYLE "\033[48;2;106;48;94m"
 
 /** Capture a UART write and guard the fixed test buffer. */
 void console_write(const char *text)
 {
-    assert(strlen(frame) + strlen(text) < sizeof frame);
-    strcat(frame, text);
+    size_t length = strlen(text);
+    assert(frame_len + length < sizeof frame);
+    memcpy(frame + frame_len, text, length + 1);
+    frame_len += length;
 }
 
 /** Draw a fresh frame and assert that the supplied text appears. */
 static void expect_frame(const char *text)
 {
+    frame_len = 0;
     frame[0] = '\0';
     minesweeper_game.draw();
     if (!strstr(frame, text)) {
@@ -151,7 +158,8 @@ static void test_session(void)
 
     minesweeper_game.start(GAME_EASY);
     expect_frame("L1/3  Easy  Classic");
-    assert(strstr(frame, "Mines 7  Left 7  Time 0s  Cell A1"));
+    assert(strstr(frame, "Mines left 7/7") && strstr(frame, "Time 00:00"));
+    assert(strstr(frame, "Opened 0/57") && strstr(frame, "Cell A1"));
     minesweeper_game.key(' ');
     unsigned x = 0, y = 0;
     for (unsigned i = 0; i < 64; ++i) {
@@ -163,7 +171,7 @@ static void test_session(void)
     expect_frame("Level cleared!");
     minesweeper_game.key('n');
     expect_frame("L2/3  Easy  Classic");
-    assert(strstr(frame, "Mines 12  Left 12  Time 0s  Cell A1"));
+    assert(strstr(frame, "Mines left 12/12") && strstr(frame, "Opened 0/88"));
     minesweeper_game.key('q');
     assert(minesweeper_game.finished());
 }
@@ -182,12 +190,20 @@ static void test_loss_and_replay(void)
 
     minesweeper_game.start(GAME_HARD);
     minesweeper_game.key(' ');
-    expect_frame("Mines 16  Left 16  Time 0s  Cell A1");
+    expect_frame("Mines left 16/16");
+    assert(strstr(frame, "Time 00:00") && strstr(frame, "Cell A1"));
+    assert(strstr(frame, FIRST_REVEAL_STYLE));
     char first_frame[sizeof frame];
     strcpy(first_frame, frame);
-    minesweeper_game.tick(1200);
-    expect_frame("Time 1s  Cell A1");
-    assert(!strstr(frame, "WASD"));  /* A timer tick updates only the header. */
+    minesweeper_game.tick(159);
+    expect_frame("");
+    assert(frame_len == 0);
+    minesweeper_game.tick(1);
+    expect_frame("\033[48;2;36;22;56m");
+    assert(!strstr(frame, FIRST_REVEAL_STYLE) && !strstr(frame, "\033[J"));
+    minesweeper_game.tick(1040);
+    expect_frame("Time 00:01");
+    assert(frame_len < 120 && !strstr(frame, "Cell "));
 
     minesweeper_game.key('\033');
     minesweeper_game.key('[');
@@ -201,21 +217,21 @@ static void test_loss_and_replay(void)
         --wrong;
     }
     go_to(wrong, &x, &y);
-    expect_frame("L1/3  Hard");
+    expect_frame("Cell ");
     assert(strstr(frame, "[.]"));
     minesweeper_game.key('f');
-    expect_frame("Left 15");
+    expect_frame("Mines left 15/16");
     assert(strstr(frame, "[F]"));
     go_to(mine, &x, &y);
     minesweeper_game.key(' ');
     expect_frame("Mine hit!");
-    assert(strstr(frame, "[!]") && strstr(frame, "\033[91;40m X "));
+    assert(strstr(frame, "[!]") && strstr(frame, " X ") && strstr(frame, "\033[48;2;167;38;89m"));
     assert(strstr(frame, "Layout 8/16/0/1013904242/0"));
     minesweeper_game.tick(2000);
     expect_frame("");
     assert(frame[0] == '\0');
     minesweeper_game.key('b');
-    expect_frame("Left 16  Time 0s");
+    expect_frame("Time 00:00");
     assert(strcmp(frame, first_frame) == 0);
 }
 
@@ -230,7 +246,7 @@ static void test_logic_session(void)
     for (unsigned attempt = 0; attempt < 128; ++attempt) {
         minesweeper_game.tick(1);
     }
-    expect_frame("\033[97;44m[ ]");
+    expect_frame(CURSOR_STYLE "[ ]");
     assert(!strstr(frame, "Layout search failed"));
 }
 
@@ -275,25 +291,26 @@ static void test_custom_session(void)
     expect_frame("outside the allowed range");
     send_text("\b\b\b28\r\n");
     expect_frame("Custom  Classic");
-    assert(strstr(frame, "Mines 28  Left 28  Time 0s  Cell A1"));
-    assert(strstr(frame, " K  L "));
-    assert(strstr(frame, "\033[97;44m[.]"));
+    assert(strstr(frame, "Mines left 28/28") && strstr(frame, "Opened 0/116"));
+    assert(strstr(frame, "\033[3;38HL"));
+    assert(strstr(frame, CURSOR_STYLE "[.]"));
     minesweeper_game.key('?');
-    expect_frame("\033[97;44m[?]");
-    assert(strstr(frame, "Left 28"));
+    expect_frame(CURSOR_STYLE "[?]");
+    assert(!strstr(frame, "Mines left "));
     minesweeper_game.key('f');
     expect_frame("[F]");
-    assert(strstr(frame, "Left 27"));
+    assert(strstr(frame, "Mines left 27/28"));
     minesweeper_game.key('?');
     expect_frame("[?]");
-    assert(strstr(frame, "Left 28"));
+    assert(strstr(frame, "Mines left 28/28"));
     send_text("g ");
     expect_frame("Checking layouts");
+    assert(strstr(frame, "Custom  Logic"));
     for (unsigned i = 0; i < 128; ++i) {
         minesweeper_game.tick(1);
     }
-    expect_frame("Custom  Logic");
-    assert(strstr(frame, "\033[97;44m[ ]"));
+    expect_frame(CURSOR_STYLE "[ ]");
+    assert(strstr(frame, "Opened "));
     minesweeper_game.key('q');
 }
 
@@ -310,24 +327,25 @@ static void test_shared_and_pause(void)
     // The closing bit is deliberately delivered as an ANSI bracketed-paste wrapper.
     send_text("l\033[200~8/16/0/1013904242/0\033[201~\r\n");
     expect_frame("Shared layout");
-    assert(strstr(frame, "Mines 16  Left 16  Time 0s  Cell A1"));
-    assert(strstr(frame, "\033[94;40m 1 ") && strstr(frame, "\033[92;40m 2 "));
+    assert(strstr(frame, "Mines left 16/16") && strstr(frame, "Cell A1"));
+    assert(strstr(frame, "\033[38;2;255;203;151m") && strstr(frame, "\033[38;2;255;133;199m"));
+    size_t opening_frame_len = frame_len;
 
     send_text("\033[1;2C");
     expect_frame("Cell B1");
-    assert(strstr(frame, "\033[97;44m[ ]"));
-    assert(!strstr(frame, " A  B  C "));  /* Moving only repaints the changed cells. */
+    assert(strstr(frame, CURSOR_STYLE "[ ]"));
+    assert(frame_len < opening_frame_len / 8 && !strstr(frame, "\033[J"));
     minesweeper_game.tick(1200);
-    expect_frame("Time 1s  Cell B1");
+    expect_frame("Time 00:01");
 
     minesweeper_game.key('p');
     expect_frame("Minesweeper paused");
-    assert(strstr(frame, "Time 1s") && !strstr(frame, " A  B  C "));
+    assert(strstr(frame, "Time 00:01") && !strstr(frame, "Opened "));
     minesweeper_game.tick(5000);
     expect_frame("");
     assert(frame[0] == '\0');
     minesweeper_game.key('p');
-    expect_frame("Time 1s  Cell B1");
+    expect_frame("Time 00:01");
 
     send_text("pq");
     assert(minesweeper_game.finished());
@@ -335,9 +353,10 @@ static void test_shared_and_pause(void)
     expect_frame("U continue");
     minesweeper_game.key('u');
     expect_frame("Shared layout");
-    assert(strstr(frame, "Left 16  Time 1s  Cell B1"));
+    assert(strstr(frame, "Mines left 16/16") && strstr(frame, "Time 00:01"));
+    assert(strstr(frame, "Cell B1"));
     minesweeper_game.tick(1000);
-    expect_frame("Time 2s  Cell B1");
+    expect_frame("Time 00:02");
     minesweeper_game.key('q');
 }
 

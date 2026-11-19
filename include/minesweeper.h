@@ -1,3 +1,6 @@
+/** @file
+ *  Registration of Minesweeper with the common menu.
+ */
 #pragma once
 
 #include "game.h"

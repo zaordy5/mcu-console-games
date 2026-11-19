@@ -3,7 +3,7 @@ PROJECT_NAME           = "MCU Console Games"
 PROJECT_BRIEF          = "Console games on STM32F407"
 OUTPUT_DIRECTORY       = build/doxygen
 
-INPUT                  = include src
+INPUT                  = include src tests
 FILE_PATTERNS          = *.c *.h
 RECURSIVE              = YES
 OPTIMIZE_OUTPUT_FOR_C  = YES

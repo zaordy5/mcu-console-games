@@ -1,3 +1,6 @@
+/** @file
+ *  Callbacks and terminal output shared by all game modules.
+ */
 #pragma once
 #include <stdbool.h>
 #include <stdint.h>

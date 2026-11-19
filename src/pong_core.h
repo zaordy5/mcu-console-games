@@ -1,3 +1,6 @@
+/** @file pong_core.h
+ *  Pong match state and host-testable rules.
+ */
 #ifndef PONG_CORE_H
 #define PONG_CORE_H
 
@@ -27,8 +30,10 @@ typedef enum { PONG_SERVE, PONG_RALLY, PONG_WON, PONG_LOST } PongPhase;
 typedef struct {
     int player_y;           /**< Top row of the player's paddle. */
     int cpu_y;              /**< Top row of the opponent's paddle. */
-    int ball_x, ball_y;     /**< Current ball cell. */
-    int dx, dy;             /**< Signed horizontal and vertical steps. */
+    int ball_x;            /**< Current ball column. */
+    int ball_y;            /**< Current ball row. */
+    int dx;                /**< Horizontal ball step, toward one paddle. */
+    int dy;                /**< Vertical ball step, zero for a flat return. */
     uint16_t ball_wait_ms;  /**< Milliseconds to the next ball event. */
     uint16_t cpu_wait_ms;   /**< Milliseconds to the next CPU movement. */
     uint8_t player_score;   /**< Points won in this match by the player. */

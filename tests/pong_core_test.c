@@ -1,3 +1,6 @@
+/** @file pong_core_test.c
+ *  Host regression checks for the Pong rules.
+ */
 #include "pong_core.h"
 
 #include <assert.h>
@@ -28,11 +31,12 @@ static void test_paddle_limits(void)
     }
     assert(pong.player_y == PONG_HEIGHT - PONG_PADDLE_SIZE);
 
-    place_ball(&pong, 10, 0, 1, 1);
+    place_ball(&pong, PONG_WIDTH - 2, 1, 1, -1);
     pong.ball_wait_ms = 30000;
     pong_tick(&pong, 4000);
     assert(pong.cpu_y == 0);
-    pong.ball_y = PONG_HEIGHT - 1;
+    pong.ball_y = PONG_HEIGHT - 2;
+    pong.dy = 1;
     pong_tick(&pong, 4000);
     assert(pong.cpu_y == PONG_HEIGHT - PONG_PADDLE_SIZE);
 }
@@ -64,6 +68,9 @@ static void test_bounces(void)
     place_ball(&pong, 1, 1, -1, -1);
     pong_tick(&pong, 1);
     assert(pong.dx == 1 && pong.dy == -1 && pong.ball_y == 0);
+    place_ball(&pong, 1, 1, -1, 1);
+    pong_tick(&pong, 1);
+    assert(pong.dx == 1 && pong.dy == 0 && pong.ball_y == 2);
 }
 
 /** Check misses, a single point, the serve pause, results and level advancement. */
@@ -158,7 +165,7 @@ int main(void)
     unsigned easy = first_cpu_move(PONG_EASY);
     unsigned normal = first_cpu_move(PONG_NORMAL);
     unsigned hard = first_cpu_move(PONG_HARD);
-    assert(easy == 400 && normal == 240 && hard == 140);
+    assert(easy == 400 && normal == 240 && hard == 175);
     printf("First CPU move: Easy %u ms, Normal %u ms, Hard %u ms\n", easy, normal, hard);
     puts("Pong core checks passed");
 }

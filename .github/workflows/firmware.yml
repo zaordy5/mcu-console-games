@@ -29,6 +29,8 @@ jobs:
           sudo apt-get install -y --no-install-recommends gcc-arm-none-eabi libnewlib-dev xterm xvfb imagemagick xauth
           cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE=cmake/arm-gcc.cmake
           cmake --build build --verbose
+      - name: Verify the SysTick millisecond clock
+        run: python3 tests/systick_renode.py build/games.elf --renode "$RUNNER_TEMP/renode/renode"
       - name: Test menu input on Renode
         run: |
           { echo "\$bin=@$PWD/build/games.elf"; tail -n +4 emulation/stm32f4.resc; } > "$RUNNER_TEMP/menu.resc"

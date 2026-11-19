@@ -5,8 +5,9 @@
 80 × 24 и включите ANSI RGB.
 
 ```sh
+git rev-parse HEAD
 cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE=cmake/arm-gcc.cmake
-cmake --build build
+cmake --build build --verbose
 ```
 
 В Renode Monitor укажите абсолютные пути к файлам.
@@ -22,12 +23,24 @@ start
 `Q` в запущенной игре возвращает в главное меню. Для продолжения сохранённой
 партии Сапёра снова откройте Сапёр и нажмите `U` на экране настройки поля.
 
+Для автоматических проверок нужен Python 3.9 или новее. Запускайте команды
+из корня репозитория.
+
 ```sh
 python3 tests/systick_renode.py build/games.elf
 python3 tests/menu_renode.py build/games.elf
 python3 tests/tetris_renode.py --elf build/games.elf --uart-log build/tetris.uart
 python3 tests/pong_renode.py build/games.elf
 ```
+
+В Windows команды можно запускать через `py -3`. Пример для Тетриса:
+
+```powershell
+py -3 tests/tetris_renode.py --elf build/games.elf --uart-log build/tetris.uart
+```
+
+Если Renode нет в `PATH`, добавьте к любой из команд тестирования
+`--renode "C:/path/to/renode.exe"`.
 
 Проверка SysTick сверяет 1000 тиков за секунду виртуального времени.
 Общая проверка выполняет один сеанс USART2. Она открывает три игры, проверяет

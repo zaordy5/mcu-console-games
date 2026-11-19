@@ -39,7 +39,7 @@ uint16_t pong_ball_interval(const Pong *pong)
     return BALL_INITIAL_MS - (pong->level - 1) * BALL_LEVEL_STEP_MS;
 }
 
-/** Center the field and set up a serve toward the conceding side. */
+/** Center the field and set up a serve in the supplied direction. */
 static void serve(Pong *pong, int direction)
 {
     int points = pong->player_score + pong->cpu_score;

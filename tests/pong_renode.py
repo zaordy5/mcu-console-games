@@ -13,10 +13,10 @@ def verify(trace):
     choose = b"Choose difficulty"
     events = (
         start, choose,
-        b"You 0:0 CPU\x1b[0m  L1  Easy",
+        b"You 0:0 CPU\x1b[0m  L1  Easy", b"Serving...  -> CPU",
         b"\x1b[08;02H\x1b[1;36m|",
         b"\x1b[13;02H\x1b[1;36m|",
-        b"You 5:4 CPU", b"You win!", b"N - next level",
+        b"Serving...  <- You", b"You 5:4 CPU", b"You win!", b"N - next level",
         b"You 0:0 CPU\x1b[0m  L2  Easy", start,
         choose, b"You 0:0 CPU\x1b[0m  L1  Hard", start,
         choose, start,

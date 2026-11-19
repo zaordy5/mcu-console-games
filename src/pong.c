@@ -55,15 +55,30 @@ static void draw_score(void)
     }
 }
 
-/** Paint a horizontal border or a blank row between the side borders. */
-static void draw_field_row(bool border)
+/** Skip cleared cells in the current terminal row without transmitting spaces. */
+static void cursor_right(unsigned columns)
+{
+    char code[] = {
+        '\033', '[', (char)('0' + columns / 10), (char)('0' + columns % 10), 'C', '\0'
+    };
+    console_write(code);
+}
+
+/** Return the court glyph that belongs under an empty playable cell. */
+static char court_tile(int x, int y)
+{
+    return x == PONG_WIDTH / 2 && y % 2 == 0 ? '.' : ' ';
+}
+
+/** Paint the top or bottom border of the court. */
+static void draw_border(void)
 {
     char row[PONG_WIDTH + 5];
-    row[0] = border ? '+' : '|';
+    row[0] = '+';
     for (unsigned x = 1; x <= PONG_WIDTH; ++x) {
-        row[x] = border ? '-' : ' ';
+        row[x] = '-';
     }
-    row[PONG_WIDTH + 1] = row[0];
+    row[PONG_WIDTH + 1] = '+';
     row[PONG_WIDTH + 2] = '\r';
     row[PONG_WIDTH + 3] = '\n';
     row[PONG_WIDTH + 4] = '\0';
@@ -73,12 +88,22 @@ static void draw_field_row(bool border)
 /** Clear the screen and draw the fixed court and help text. */
 static void draw_field(void)
 {
-    console_write("\033[0m\033[2J\033[H\r\nW/S - move  Q - menu\r\n");
-    draw_field_row(true);
-    for (unsigned y = 0; y < PONG_HEIGHT; ++y) {
-        draw_field_row(false);
+    console_write("\033[0m\033[2J\033[H\r\nW/S - move  Q - menu  First to ");
+    write_number(PONG_WIN_SCORE);
+    console_write("\r\n");
+    draw_border();
+    for (int y = 0; y < PONG_HEIGHT; ++y) {
+        console_write("|");
+        if (court_tile(PONG_WIDTH / 2, y) == '.') {
+            cursor_right(PONG_WIDTH / 2);
+            console_write(".");
+            cursor_right(PONG_WIDTH - PONG_WIDTH / 2 - 1);
+        } else {
+            cursor_right(PONG_WIDTH);
+        }
+        console_write("|\r\n");
     }
-    draw_field_row(true);
+    draw_border();
 }
 
 /** Show serve, controls after victory or the final loss. */
@@ -88,7 +113,7 @@ static void draw_status(void)
     console_write("\033[2K");
     switch (match.phase) {
     case PONG_SERVE:
-        console_write("Serving...");
+        console_write(match.dx > 0 ? "Serving...  -> CPU" : "Serving...  <- You");
         break;
     case PONG_WON:
         if (match.level < PONG_MAX_LEVEL) {
@@ -171,12 +196,14 @@ static void draw(void)
     if (fresh_screen || drawn.ball_x != match.ball_x || drawn.ball_y != match.ball_y) {
         if (!fresh_screen) {
             cursor_at(FIELD_ROW + drawn.ball_y, FIELD_COLUMN + drawn.ball_x);
-            console_write(" ");
+            char tile[] = {court_tile(drawn.ball_x, drawn.ball_y), '\0'};
+            console_write(tile);
         }
         cursor_at(FIELD_ROW + match.ball_y, FIELD_COLUMN + match.ball_x);
         console_write("\033[1;32mO\033[0m");
     }
-    if (fresh_screen || drawn.phase != match.phase || drawn.level != match.level) {
+    if (fresh_screen || drawn.phase != match.phase || drawn.level != match.level ||
+        (match.phase == PONG_SERVE && drawn.dx != match.dx)) {
         draw_status();
     }
     drawn = match;

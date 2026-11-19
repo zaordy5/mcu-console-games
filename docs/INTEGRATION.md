@@ -33,3 +33,20 @@ python3 tests/pong_renode.py build/games.elf
 и совпадение главного меню до и после каждой игры. GitHub Actions собирает ELF
 из SHA, записанного в `commit.txt`, и сохраняет его вместе с логами и двумя
 снимками в артефакте `firmware-menu`.
+
+## Документация кода
+
+Из корня репозитория запустите Doxygen:
+
+```sh
+doxygen Doxyfile
+```
+
+Точка входа — `build/doxygen/html/index.html`. Конфигурация обрабатывает
+C-исходники и заголовки из `src` и `include`, включая статические функции всех
+трёх игр. В общий справочник попадают и символы без комментариев. Для аудита
+комментариев прогоните тот же конфиг с отключённым `EXTRACT_ALL`:
+
+```sh
+{ cat Doxyfile; printf '\nEXTRACT_ALL = NO\nOUTPUT_DIRECTORY = build/doxygen-audit\n'; } | doxygen -
+```

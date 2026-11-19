@@ -1,0 +1,19 @@
+# Run from the repository root: doxygen Doxyfile
+PROJECT_NAME           = "MCU Console Games"
+PROJECT_BRIEF          = "Console games on STM32F407"
+OUTPUT_DIRECTORY       = build/doxygen
+
+INPUT                  = include src
+FILE_PATTERNS          = *.c *.h
+RECURSIVE              = YES
+OPTIMIZE_OUTPUT_FOR_C  = YES
+EXTRACT_ALL            = YES
+EXTRACT_STATIC         = YES
+
+GENERATE_HTML          = YES
+GENERATE_LATEX         = NO
+HAVE_DOT               = NO
+
+WARNINGS               = YES
+WARN_IF_DOC_ERROR      = YES
+QUIET                  = YES

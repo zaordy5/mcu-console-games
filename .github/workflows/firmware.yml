@@ -70,13 +70,14 @@ jobs:
           send_keys 50 51 103 32
           args+=(-e 'emulation RunFor "00:00:02"')
           send_keys 113 50 50 99 51 50 56 13 108
-          layout='12/25/74/1013904242/0'
+          layout='12/25/74/1/0'
           # Rapid input also exercises the form's delayed echo.
           for ((index=0; index < ${#layout}; ++index)); do
             printf -v byte '%d' "'${layout:index:1}"
             send_byte "$byte" 00.004
           done
-          send_keys 13 113 51 50 113
+          send_keys 13 119 97 97 102 100
+          send_keys 113 51 50 113
           timeout 150s "$RUNNER_TEMP/renode/renode" --disable-gui --hide-analyzers --plain "$RUNNER_TEMP/menu.resc" \
             -e "sysbus.usart2 CreateFileBackend @$PWD/menu.uart true" -e 'emulation RunFor "00:00:00.3"' "${args[@]}" -e quit
           python3 - <<'PY'
@@ -113,7 +114,7 @@ jobs:
           print(f"Clock at the last game frame, pause and resume: "
                 f"{before_pause.decode()}, {stopped[1].decode()}, {restored[1].decode()}")
           assert before_pause == stopped[1] == restored[1] == b"00:01"
-          assert b"\x1b[38;2;217;190;255m\x1b[48;2;89;39;81m ?" not in restored_frame, (
+          assert not re.search(rb"\x1b\[38;2;217;190;255m\x1b\[48;2;(89;39;81|112;47;96)m \?", restored_frame), (
               "The first open should clear the question mark"
           )
           assert selected + b"[ ]" in hard and b"Layout search failed" not in hard
@@ -122,6 +123,8 @@ jobs:
           assert b"Load layout" in custom
           shared = custom.split(b"Shared layout", 1)[1]
           assert b"Mines left 25/25" in shared and b"Cell C7" in shared
+          assert b"Opened 41/119" in shared and b"Mines left 24/25" in shared
+          assert b"Flags nearby 1/3" in shared
           assert b"\x1b[38;2;255;203;151m" in shared and b"\x1b[38;2;255;133;199m" in shared
           Path("minesweeper.uart").write_bytes(clear + custom)
           PY

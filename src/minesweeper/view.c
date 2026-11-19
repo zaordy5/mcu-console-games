@@ -10,7 +10,7 @@ enum {
 /** RGB roles shared by the game, pause, and setup screens. */
 typedef enum {
     INK, MUTED, PINK, PEACH, LAVENDER, MINT, MELON, ICE, CREAM, ROSE,
-    BASE, FIELD, TILE, PREVIEW, FLASH, CURSOR, BLAST, SUNSET_VIOLET,
+    BASE, FIELD, TILE, TILE_ALT, PREVIEW, FLASH, CURSOR, BLAST, SUNSET_VIOLET,
     SUNSET_PINK, SUNSET_PEACH, NO_COLOR
 } Color;
 
@@ -20,7 +20,8 @@ static const char *const rgb[] = {
     [PEACH] = "255;203;151", [LAVENDER] = "217;190;255", [MINT] = "162;233;218",
     [MELON] = "255;168;163", [ICE] = "194;217;255", [CREAM] = "255;229;183",
     [ROSE] = "253;164;229", [BASE] = "24;15;39", [FIELD] = "36;22;56",
-    [TILE] = "89;39;81", [PREVIEW] = "122;52;105", [FLASH] = "106;48;94",
+    [TILE] = "89;39;81", [TILE_ALT] = "112;47;96", [PREVIEW] = "141;63;121",
+    [FLASH] = "106;48;94",
     [CURSOR] = "255;119;191", [BLAST] = "167;38;89", [SUNSET_VIOLET] = "112;63;162",
     [SUNSET_PINK] = "220;84;155", [SUNSET_PEACH] = "255;172;123"
 };
@@ -353,7 +354,7 @@ static char cell_symbol(const MinesBoard *board, uint8_t index, MinesScreen scre
 }
 
 /** Render a clue, covered tile, or selected bracket pair within three columns. */
-static void paint_cell(uint16_t cell)
+static void paint_cell(uint16_t cell, Color covered)
 {
     char symbol = (char)(cell & 127);
     bool selected = (cell & SELECTED) != 0;
@@ -364,7 +365,8 @@ static void paint_cell(uint16_t cell)
     } else if (selected) {
         style(BASE, CURSOR);
     } else if (symbol == '.' || symbol == 'F' || symbol == '?') {
-        style(symbol == 'F' ? PEACH : symbol == '?' ? LAVENDER : MUTED, cell & TARGET ? PREVIEW : TILE);
+        Color fg = symbol == 'F' ? PEACH : symbol == '?' ? LAVENDER : MUTED;
+        style(fg, cell & TARGET ? PREVIEW : covered);
         label[2] = '\0';
         console_write(label);
         style(foreground, FIELD);
@@ -445,7 +447,7 @@ static void paint_field(const MinesRun *run, MinesScreen screen, bool full, cons
 
             unsigned column = FIELD_COLUMN + CELL_WIDTH * x;
             if (next_column != column) move_to(FIELD_ROW + y, column);
-            paint_cell(tile);
+            paint_cell(tile, (x + y) % 2 ? TILE_ALT : TILE);
             painted.cells[index] = tile;
             next_column = column + CELL_WIDTH;
         }

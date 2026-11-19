@@ -6,6 +6,7 @@
 #include <assert.h>
 #include <limits.h>
 #include <stdio.h>
+#include <string.h>
 
 /** Straight tetromino occupying the second row of a 4×4 box. */
 #define BAR_HORIZONTAL 0x00f0u
@@ -48,7 +49,7 @@ static void test_movement_and_rotation(void)
     assert(tetris_move(&game, -1));
     assert(tetris_move(&game, -1) && game.x == -2);
     assert(!tetris_move(&game, -1));
-    assert(!tetris_rotate(&game) && game.shape == BAR_VERTICAL && game.x == -2);
+    assert(tetris_rotate(&game) && game.shape == 0x0f00u && game.x == 0);
 
     place_bar(&game, BAR_HORIZONTAL, TETRIS_WIDTH - 4, TETRIS_HEIGHT - 2);
     assert(!tetris_move(&game, 1) && game.x == TETRIS_WIDTH - 4);
@@ -222,6 +223,86 @@ static void test_tetrominoes(void)
     puts("PASS seven tetrominoes: four cells per piece through all rotations");
 }
 
+/** Check wall nudges for both sides, asymmetric shapes and blocked turns. */
+static void test_wall_rotations(void)
+{
+    const struct {
+        uint8_t color;
+        uint16_t shape;
+        uint16_t turned;
+        int from_x;
+        int to_x;
+    } cases[] = {
+        {2, 0x0226, 0x0470, -1, 0}, {2, 0x0322, 0x0071, 10, 9}, /* J */
+        {3, 0x0622, 0x0170, -1, 0}, {3, 0x0223, 0x0074, 10, 9}, /* L */
+        {5, 0x0262, 0x0270, -1, 0}, {5, 0x0232, 0x0072, 10, 9}, /* T */
+        {6, 0x0462, 0x0360, -1, 0}, {6, 0x0231, 0x0036, 10, 9}, /* S */
+        {7, 0x0264, 0x0630, -1, 0}, {7, 0x0132, 0x0063, 10, 9}, /* Z */
+        {2, 0x0470, 0x0322, 0, 0}, {3, 0x0170, 0x0223, 9, 9}, /* Fits as is */
+    };
+    Tetris game;
+    for (size_t i = 0; i < sizeof cases / sizeof cases[0]; ++i) {
+        tetris_reset(&game, TETRIS_NORMAL, 1);
+        game.x = cases[i].from_x;
+        game.y = 5;
+        game.color = cases[i].color;
+        game.shape = cases[i].shape;
+        assert(tetris_rotate(&game));
+        assert(game.shape == cases[i].turned && game.x == cases[i].to_x && game.y == 5);
+    }
+
+    tetris_reset(&game, TETRIS_NORMAL, 1);
+    game.color = 2;
+    game.shape = 0x0226;
+    game.x = -1;
+    game.y = 5;
+    game.board[7][2] = 3;
+    assert(!tetris_rotate(&game) && game.x == -1 && game.shape == 0x0226);
+    game.color = 3;
+    game.shape = 0x0223;
+    game.x = 10;
+    game.board[6][9] = 3;
+    assert(!tetris_rotate(&game) && game.x == 10 && game.shape == 0x0223);
+    game.color = 2;
+    game.shape = 0x0071;
+    game.x = 0;
+    game.y = TETRIS_HEIGHT - 2;
+    assert(!tetris_rotate(&game) && game.y == TETRIS_HEIGHT - 2 && game.shape == 0x0071);
+    puts("PASS asymmetric rotations: both walls, blocked nudges and no floor overlap");
+}
+
+/** Follow the advertised piece through spawns, including three bag boundaries. */
+static void test_next_piece(void)
+{
+    Tetris game;
+    tetris_reset(&game, TETRIS_NORMAL, 1);
+    for (int piece = 0; piece < 3 * TETRIS_SHAPES; ++piece) {
+        memset(game.board, 0, sizeof game.board);
+        uint8_t color = tetris_next_color(&game);
+        assert(color > 0 && color <= TETRIS_SHAPES);
+        uint16_t shape = 0;
+        int cells = 0;
+        for (int y = 0; y < TETRIS_PIECE_SIZE; ++y) {
+            for (int x = 0; x < TETRIS_PIECE_SIZE; ++x) {
+                uint8_t cell = tetris_next_cell(&game, x, y);
+                if (cell != 0) {
+                    assert(cell == color);
+                    shape |= (uint16_t)(1u << (y * TETRIS_PIECE_SIZE + x));
+                    ++cells;
+                }
+            }
+        }
+        assert(cells == 4 && tetris_next_cell(&game, -1, 0) == 0);
+        do {
+            assert(tetris_soft_drop(&game));
+        } while (game.y != 0);
+        assert(game.color == color && game.shape == shape);
+    }
+    assert(tetris_tick(&game, UINT32_MAX) && game.lost);
+    assert(tetris_next_color(&game) == 0 && tetris_next_cell(&game, 1, 1) == 0);
+    puts("PASS next piece: preview matches spawn across bag boundaries and clears on loss");
+}
+
 /** Run all portable game checks. */
 int main(void)
 {
@@ -232,5 +313,7 @@ int main(void)
     test_gravity();
     test_api_boundaries();
     test_tetrominoes();
+    test_wall_rotations();
+    test_next_piece();
     return 0;
 }

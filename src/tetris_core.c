@@ -3,8 +3,6 @@
  */
 #include "tetris_core.h"
 
-/** Row stride and maximum side length of the shape bitmap. */
-#define SHAPE_SIDE 4
 /** Rotation box side for the pieces that turn around a center cell. */
 #define CENTERED_SIDE 3
 /** Color index of the straight piece, which rotates in a 4×4 box. */
@@ -41,14 +39,14 @@ static const uint16_t shapes[TETRIS_SHAPES] = {
 /** Test the local cell at (x, y) in a shape bitmap. */
 static bool contains(uint16_t shape, int x, int y)
 {
-    return (shape & (1u << (y * SHAPE_SIDE + x))) != 0;
+    return (shape & (1u << (y * TETRIS_PIECE_SIZE + x))) != 0;
 }
 
 /** Test only occupied cells against the board bounds and settled blocks. */
 static bool fits(const Tetris *game, uint16_t shape, int left, int top)
 {
-    for (int y = 0; y < SHAPE_SIDE; ++y) {
-        for (int x = 0; x < SHAPE_SIDE; ++x) {
+    for (int y = 0; y < TETRIS_PIECE_SIZE; ++y) {
+        for (int x = 0; x < TETRIS_PIECE_SIZE; ++x) {
             if (!contains(shape, x, y)) {
                 continue;
             }
@@ -92,13 +90,14 @@ static void shuffle(Tetris *game)
 /** Spawn the next shape at the top center, or mark the game as lost. */
 static void spawn(Tetris *game)
 {
+    uint8_t index = game->bag[game->next++];
+    /* Refill now so the preview also works while the last bag piece is active. */
     if (game->next == TETRIS_SHAPES) {
         shuffle(game);
     }
-    uint8_t index = game->bag[game->next++];
     game->shape = shapes[index];
     game->color = (uint8_t)(index + 1u);
-    game->x = (TETRIS_WIDTH - SHAPE_SIDE) / 2;
+    game->x = (TETRIS_WIDTH - TETRIS_PIECE_SIZE) / 2;
     game->y = 0;
     game->lost = !fits(game, game->shape, game->x, game->y);
 }
@@ -139,8 +138,8 @@ static void step_down(Tetris *game)
         return;
     }
 
-    for (int y = 0; y < SHAPE_SIDE; ++y) {
-        for (int x = 0; x < SHAPE_SIDE; ++x) {
+    for (int y = 0; y < TETRIS_PIECE_SIZE; ++y) {
+        for (int x = 0; x < TETRIS_PIECE_SIZE; ++x) {
             if (contains(game->shape, x, y)) {
                 game->board[game->y + y][game->x + x] = game->color;
             }
@@ -164,7 +163,7 @@ void tetris_reset(Tetris *game, TetrisDifficulty difficulty, uint32_t seed)
     game->score = 0;
     game->lines = 0;
     game->random = seed ? seed : 1u;
-    game->next = TETRIS_SHAPES;
+    shuffle(game);
     spawn(game);
     game->until_drop = tetris_interval(game);
 }
@@ -184,18 +183,34 @@ bool tetris_rotate(Tetris *game)
     if (game->lost || game->shape == SQUARE_SHAPE) {
         return false;
     }
-    int side = game->color == STRAIGHT_COLOR ? SHAPE_SIDE : CENTERED_SIDE;
+    int side = game->color == STRAIGHT_COLOR ? TETRIS_PIECE_SIZE : CENTERED_SIDE;
     uint16_t rotated = 0;
+    int min_x = side - 1;
+    int max_x = 0;
     for (int y = 0; y < side; ++y) {
         for (int x = 0; x < side; ++x) {
             if (contains(game->shape, x, y)) {
-                rotated |= (uint16_t)(1u << (x * SHAPE_SIDE + (side - 1 - y)));
+                int column = side - 1 - y;
+                rotated |= (uint16_t)(1u << (x * TETRIS_PIECE_SIZE + column));
+                if (column < min_x) {
+                    min_x = column;
+                }
+                if (column > max_x) {
+                    max_x = column;
+                }
             }
         }
     }
-    if (rotated == game->shape || !fits(game, rotated, game->x, game->y)) {
+    int left = game->x;
+    if (left + min_x < 0) {
+        left = -min_x;
+    } else if (left + max_x >= TETRIS_WIDTH) {
+        left = TETRIS_WIDTH - 1 - max_x;
+    }
+    if (rotated == game->shape || !fits(game, rotated, left, game->y)) {
         return false;
     }
+    game->x = left;
     game->shape = rotated;
     return true;
 }
@@ -253,10 +268,24 @@ uint8_t tetris_cell(const Tetris *game, int x, int y)
 
     int local_x = x - game->x;
     int local_y = y - game->y;
-    if (!game->lost && local_x >= 0 && local_x < SHAPE_SIDE &&
-        local_y >= 0 && local_y < SHAPE_SIDE &&
+    if (!game->lost && local_x >= 0 && local_x < TETRIS_PIECE_SIZE &&
+        local_y >= 0 && local_y < TETRIS_PIECE_SIZE &&
         contains(game->shape, local_x, local_y)) {
         return game->color;
     }
     return game->board[y][x];
+}
+
+uint8_t tetris_next_color(const Tetris *game)
+{
+    return game->lost ? 0 : (uint8_t)(game->bag[game->next] + 1u);
+}
+
+uint8_t tetris_next_cell(const Tetris *game, int x, int y)
+{
+    if (game->lost || x < 0 || x >= TETRIS_PIECE_SIZE || y < 0 || y >= TETRIS_PIECE_SIZE) {
+        return 0;
+    }
+    uint8_t index = game->bag[game->next];
+    return contains(shapes[index], x, y) ? (uint8_t)(index + 1u) : 0;
 }

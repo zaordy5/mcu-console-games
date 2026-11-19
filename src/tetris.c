@@ -12,6 +12,10 @@
 #define FRAME_WIDTH 40
 /** Column of the drop timer on the title row. */
 #define DROP_COLUMN 29
+/** First row of the next-piece preview interior. */
+#define NEXT_TOP 6
+/** First text column occupied by preview cells. */
+#define NEXT_LEFT 30
 /** Minimum time between successful turns when the terminal repeats a held key. */
 #define ROTATION_INTERVAL_MS 180u
 
@@ -21,6 +25,8 @@ static Tetris session;
 static uint8_t shown[TETRIS_HEIGHT][TETRIS_WIDTH];
 /** Line count last written to the status row. */
 static uint32_t shown_lines;
+/** Color of the next piece last drawn in the preview. */
+static uint8_t shown_next;
 /** The next draw must clear and redraw the frame. */
 static bool new_frame;
 /** A tick or key changed the visible game state. */
@@ -40,10 +46,10 @@ typedef enum {
 /** Input parser state for the active session. */
 static InputState input_state;
 
-/** ANSI background colors keyed by the portable cell value. */
+/** ANSI cell styles keyed by color, with a dark outline glyph over the fill. */
 static const char *const backgrounds[TETRIS_SHAPES + 1] = {
-    "\033[0m", "\033[46m", "\033[104m", "\033[43m",
-    "\033[47m", "\033[45m", "\033[42m", "\033[41m"
+    "\033[0m", "\033[30;46m", "\033[30;104m", "\033[30;43m",
+    "\033[30;47m", "\033[30;45m", "\033[30;42m", "\033[30;41m"
 };
 
 /** Display labels keyed by the portable starting difficulty. */
@@ -72,11 +78,11 @@ static void move_cursor(unsigned row, unsigned column)
     console_write("H");
 }
 
-/** Write a horizontal border spanning the current board width. */
-static void draw_border(void)
+/** Write a horizontal border spanning the given number of cells. */
+static void draw_border(int width)
 {
     console_write("\033[36m+");
-    for (int x = 0; x < TETRIS_WIDTH; ++x) {
+    for (int x = 0; x < width; ++x) {
         console_write("--");
     }
     console_write("+\033[0m\r\n");
@@ -88,7 +94,7 @@ static void draw_frame(void)
     console_write("\033[0m\033[2J\033[H\033[1;36mTETRIS\033[0m | Difficulty: ");
     console_write(difficulty_labels[session.difficulty]);
     console_write("\r\n\r\n");
-    draw_border();
+    draw_border(TETRIS_WIDTH);
     for (int y = 0; y < TETRIS_HEIGHT; ++y) {
         console_write("\033[36m|\033[0m");
         for (int x = 0; x < TETRIS_WIDTH; ++x) {
@@ -97,23 +103,34 @@ static void draw_frame(void)
         }
         console_write("\033[36m|\033[0m\r\n");
     }
-    draw_border();
+    draw_border(TETRIS_WIDTH);
     console_write("\033[36mMOVE\033[0m A/D or Left/Right  \033[36mTURN\033[0m W/Up\r\n");
     console_write("\033[36mDROP\033[0m S/Down  \033[36mMENU\033[0m Q");
+    move_cursor(NEXT_TOP - 2, NEXT_LEFT - 1);
+    console_write("\033[1;36mNext block:\033[0m");
+    move_cursor(NEXT_TOP - 1, NEXT_LEFT - 1);
+    draw_border(TETRIS_PIECE_SIZE);
+    for (unsigned y = 0; y < TETRIS_PIECE_SIZE; ++y) {
+        move_cursor(NEXT_TOP + y, NEXT_LEFT - 1);
+        console_write("\033[36m|        |\033[0m");
+    }
+    move_cursor(NEXT_TOP + TETRIS_PIECE_SIZE, NEXT_LEFT - 1);
+    draw_border(TETRIS_PIECE_SIZE);
 }
 
-/** Paint a run of adjacent cells sharing a background color. */
-static void draw_run(int x, int y, int length, uint8_t color)
+/** Write a run of individual cell outlines or empty spaces at the cursor. */
+static void write_cells(int length, uint8_t color)
 {
     char cells[2 * TETRIS_WIDTH + 1];
-    int width = 2 * length;
-    for (int i = 0; i < width; ++i) {
-        cells[i] = ' ';
+    for (int i = 0; i < length; ++i) {
+        cells[2 * i] = color ? '[' : ' ';
+        cells[2 * i + 1] = color ? ']' : ' ';
     }
-    cells[width] = '\0';
+    cells[2 * length] = '\0';
 
-    move_cursor((unsigned)(FIELD_TOP + y), (unsigned)(2 + 2 * x));
-    console_write(backgrounds[color]);
+    if (color != 0) {
+        console_write(backgrounds[color]);
+    }
     console_write(cells);
     if (color != 0) {
         console_write("\033[0m");
@@ -136,9 +153,22 @@ static void draw_board(void)
                 shown[y][x++] = color;
             } while (x < TETRIS_WIDTH && shown[y][x] != color &&
                      tetris_cell(&session, x, y) == color);
-            draw_run(first, y, x - first, color);
+            move_cursor((unsigned)(FIELD_TOP + y), (unsigned)(2 + 2 * first));
+            write_cells(x - first, color);
         }
     }
+}
+
+/** Draw or clear the next tetromino, keeping its outline separate from the board. */
+static void draw_next(void)
+{
+    for (int y = 0; y < TETRIS_PIECE_SIZE; ++y) {
+        move_cursor((unsigned)(NEXT_TOP + y), NEXT_LEFT);
+        for (int x = 0; x < TETRIS_PIECE_SIZE; ++x) {
+            write_cells(1, tetris_next_cell(&session, x, y));
+        }
+    }
+    shown_next = tetris_next_color(&session);
 }
 
 /** Update the score and the millisecond interval displayed under the title. */
@@ -264,6 +294,9 @@ static void draw_game(void)
     }
     if (new_frame || shown_lines != session.lines) {
         draw_status();
+    }
+    if (new_frame || shown_next != tetris_next_color(&session)) {
+        draw_next();
     }
     draw_board();
     if (session.lost) {

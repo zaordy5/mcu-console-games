@@ -13,7 +13,7 @@ RESET = b"\x1b[0m"
 MENU = b"MCU Console Games"
 DIFFICULTY = b"Choose difficulty"
 GAME_OVER = b"\x1b[31mGame over.\x1b[0m  Q - menu"
-BOARD_PAINT = re.compile(rb"\x1b\[[0-9]+;[0-9]+H\x1b\[(?:4[1-7]|10[0-7])m")
+BOARD_PAINT = re.compile(rb"\x1b\[[0-9]+;(?:[2-9]|1[0-9]|2[0-5])H\x1b\[30;(?:4[1-7]|10[0-7])m\[\]")
 BOTTOM_CURSOR = b"\x1b[24;40H"
 
 
@@ -44,6 +44,8 @@ def check_uart(data: bytes) -> None:
         drop = f"Drop: {interval} ms".encode()
         if b"Score 0 L1 Ln0" not in game or drop not in game or not BOARD_PAINT.search(game):
             raise ValueError(f"Missing starting HUD or ANSI color at {interval} ms")
+        if b"Next block:" not in game or b"\x1b[7;30H\x1b[30;46m[]" not in game:
+            raise ValueError("Missing the opening next-piece preview")
     if b"A/D or Left/Right" not in easy or b"W/Up" not in easy or b"S/Down" not in easy:
         raise ValueError("The game screen is missing the arrow key guide")
     if easy.count(BOTTOM_CURSOR) < 6 or b"Game over." in easy:

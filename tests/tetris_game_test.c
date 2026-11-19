@@ -80,10 +80,9 @@ static void test_game_callbacks(void)
     assert(strstr(output, "Score 0 L1 Ln0") && strstr(output, "Drop: 850 ms"));
     assert(strstr(output, "A/D or Left/Right"));
     assert(strstr(output, "W/Up") && strstr(output, "S/Down"));
-    assert(strstr(output, "\033[104m") || strstr(output, "\033[45m") ||
-           strstr(output, "\033[46m") || strstr(output, "\033[43m") ||
-           strstr(output, "\033[42m") || strstr(output, "\033[41m") ||
-           strstr(output, "\033[47m"));
+    assert(strstr(output, "\033[30;45m[][][]"));
+    assert(strstr(output, "Next block:"));
+    assert(strstr(output, "\033[7;30H\033[30;46m[]"));
 
     clear_output();
     tetris_game.tick(849);
@@ -259,6 +258,25 @@ static void test_rotation_repeat(void)
     puts("PASS Game API: repeated W turns at most every 180 ms; gravity drops at 850 ms");
 }
 
+/** Confirm that the first preview stays put during a fall and updates on spawn. */
+static void test_preview_update(void)
+{
+    tetris_game.start(GAME_EASY);
+    clear_output();
+    tetris_game.draw();
+    clear_output();
+    for (int step = 0; step < 16; ++step) {
+        tetris_game.key('S');
+        tetris_game.draw();
+        assert(!strstr(output, "\033[6;30H"));
+        clear_output();
+    }
+    tetris_game.key('S');
+    tetris_game.draw();
+    assert(strstr(output, "\033[6;30H") && strstr(output, "\033[30;46m[][][][]"));
+    puts("PASS Game API: next piece updates when the earlier preview spawns");
+}
+
 /** Run all Game callback checks. */
 int main(void)
 {
@@ -267,6 +285,7 @@ int main(void)
     test_result_and_restart();
     test_arrow_keys();
     test_rotation_repeat();
+    test_preview_update();
     test_level_replay();
     return 0;
 }

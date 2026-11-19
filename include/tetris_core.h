@@ -14,6 +14,8 @@
 #define TETRIS_HEIGHT 18
 /** Number of shapes in each shuffled bag. */
 #define TETRIS_SHAPES 7
+/** Side length of a piece bitmap and of the next-piece preview. */
+#define TETRIS_PIECE_SIZE 4
 
 /** Starting gravity settings. */
 typedef enum {
@@ -48,7 +50,7 @@ void tetris_reset(Tetris *game, TetrisDifficulty difficulty, uint32_t seed);
 /** Move one column left (-1) or right (1) if the destination is free. */
 bool tetris_move(Tetris *game, int direction);
 
-/** Try a clockwise rotation around the active piece's center. */
+/** Turn clockwise, nudging inwards only if the turned shape crosses a side wall. */
 bool tetris_rotate(Tetris *game);
 
 /** Advance the piece one row immediately, locking it if blocked. */
@@ -65,5 +67,11 @@ uint32_t tetris_interval(const Tetris *game);
 
 /** Return the visible color, including the active piece, or zero outside the board. */
 uint8_t tetris_cell(const Tetris *game, int x, int y);
+
+/** Return the next piece's color, or zero after game over. */
+uint8_t tetris_next_color(const Tetris *game);
+
+/** Return the next piece's visible color at a preview coordinate, or zero if empty. */
+uint8_t tetris_next_cell(const Tetris *game, int x, int y);
 
 #endif

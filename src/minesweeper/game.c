@@ -1,3 +1,4 @@
+#include "minesweeper.h"
 #include "view.h"
 
 /** Bounds on candidate checks, escape sequences, and redraws during pasted input. */

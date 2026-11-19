@@ -74,6 +74,7 @@ jobs:
             -e "sysbus.usart2 CreateFileBackend @$PWD/menu.uart true" -e 'emulation RunFor "00:00:00.3"' "${args[@]}" -e quit
           python3 - <<'PY'
           from pathlib import Path
+          import re
           raw = Path("menu.uart").read_bytes()
           clear = b"\x1b[2J\x1b[H"
           frames = raw.split(clear)[1:]
@@ -92,9 +93,17 @@ jobs:
           selected = b"\x1b[30;107m"
           assert selected + b"[F]" in easy and selected + b"[?]" in easy
           assert b"Left 6" in easy and b"Left 7" in easy and b"Cell B1" in easy
-          assert selected + b"[ ]" in easy and b"Time 1s  Cell A1" in easy
-          assert b"Minesweeper paused\x1b[0m\r\nTime 1s" in easy
-          assert b"L1/3  Easy  Classic" in resume and b"Time 1s  Cell A1" in resume
+          assert selected + b"[ ]" in easy, "The first open must be safe and blank"
+          played_times = re.findall(rb"Time (\d+)s  Cell A1", easy)
+          stopped = re.search(rb"Minesweeper paused\x1b\[0m\r?\nTime (\d+)s", easy)
+          assert stopped, easy[-500:]
+          before_pause = played_times[-1]
+          restored_frame = resume.split(b"L1/3  Easy  Classic", 1)[1]
+          restored = re.search(rb"Time (\d+)s  Cell A1", restored_frame)
+          assert restored, restored_frame[:180]
+          print(f"Clock at the last game frame, pause and resume: "
+                f"{before_pause.decode()}, {stopped[1].decode()}, {restored[1].decode()} seconds")
+          assert int(before_pause) > 0 and before_pause == stopped[1] == restored[1]
           assert b"\x1b[95m ? " not in resume, "The first open should clear the question mark"
           assert selected + b"[ ]" in hard
           assert b"Layout search failed" not in hard
@@ -106,6 +115,7 @@ jobs:
           PY
           xvfb-run -a sh -ec 'xterm -T "Minesweeper UART" -geometry 64x20 -fa Monospace -fs 14 -e sh -c "cat minesweeper.uart; sleep 8" & sleep 2; import -window "Minesweeper UART" menu.png'
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: firmware-menu
           path: |

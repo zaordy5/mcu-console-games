@@ -266,7 +266,8 @@ void mines_view_pause(const MinesRun *run)
     page("Minesweeper paused");
     console_write("Time ");
     write_number(run->played_ms / 1000);
-    console_write("s\r\nP continue | Q menu");
+    console_write(run->board.generated ? "s\r\nP resume | Q save and return to menu" :
+                                         "s\r\nP resume | Q menu");
 }
 
 void mines_view_form(MinesScreen screen, unsigned side, const char *input, bool invalid)

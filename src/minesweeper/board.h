@@ -18,8 +18,8 @@ enum { CELL_MINE = 1, CELL_OPEN = 2, CELL_FLAG = 4, CELL_QUESTION = 8 };
 /** Result of an attempt to open a cell or its neighbors. */
 typedef enum { MINES_NO_CHANGE, MINES_OPENED, MINES_LOST, MINES_WON } MinesResult;
 
-/** Mine placement family used to reconstruct a layout. */
-typedef enum { MINES_SCATTERED, MINES_COMPACT, MINES_BANDED } MinesLayout;
+/** Stable placement codes stored in shared layouts. */
+typedef enum { MINES_SCATTERED = 0, MINES_COMPACT = 1, MINES_BANDED = 2 } MinesLayout;
 
 /** Field state for a single level, addressed by row-major cell indices. */
 typedef struct {

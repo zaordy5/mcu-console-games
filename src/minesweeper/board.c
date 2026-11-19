@@ -8,6 +8,17 @@ static uint32_t random_next(uint32_t state)
     return state ^ (state << 5);
 }
 
+bool mines_board_valid(unsigned side, unsigned mine_count)
+{
+    return side >= MINES_MIN_SIDE && side <= MINES_MAX_SIDE && side % 2 == 0 &&
+           mine_count > 0 && mine_count <= side * side - MINES_SAFE_AREA;
+}
+
+bool mines_board_logic_allowed(const MinesBoard *board)
+{
+    return board->mine_count <= (board->side * board->side) / 4;
+}
+
 void mines_board_reset(MinesBoard *board, uint8_t side, uint8_t mine_count)
 {
     board->side = side;
@@ -124,18 +135,32 @@ bool mines_flag(MinesBoard *board, uint8_t index)
         return false;
     }
     if (board->cells[index] & CELL_FLAG) {
+        board->cells[index] &= (uint8_t)~CELL_FLAG;
         --board->flagged;
     } else {
+        board->cells[index] &= (uint8_t)~CELL_QUESTION;
+        board->cells[index] |= CELL_FLAG;
         ++board->flagged;
     }
-    board->cells[index] ^= CELL_FLAG;
+    return true;
+}
+
+bool mines_question(MinesBoard *board, uint8_t index)
+{
+    if (board->cells[index] & CELL_OPEN) {
+        return false;
+    }
+    if (board->cells[index] & CELL_FLAG) {
+        mines_flag(board, index);
+    }
+    board->cells[index] ^= CELL_QUESTION;
     return true;
 }
 
 /** Reveal a safe cell and queue it once for the iterative flood. */
 static void enqueue(MinesBoard *board, uint8_t index, uint8_t *queue, unsigned *tail)
 {
-    board->cells[index] |= CELL_OPEN;
+    board->cells[index] = CELL_OPEN;
     --board->remaining;
     queue[(*tail)++] = index;
 }
@@ -160,7 +185,7 @@ static void reveal(MinesBoard *board, uint8_t index)
         unsigned count = adjacent(board, cell, neighbors);
         for (unsigned i = 0; i < count; ++i) {
             uint8_t neighbor = neighbors[i];
-            if (board->cells[neighbor] == 0) {
+            if (!(board->cells[neighbor] & (CELL_OPEN | CELL_FLAG | CELL_MINE))) {
                 enqueue(board, neighbor, queue, &tail);
             }
         }
@@ -317,6 +342,9 @@ static bool deduce_subsets(MinesBoard *board)
 
 bool mines_board_solvable(const MinesBoard *board, uint8_t first)
 {
+    if (!board->generated) {
+        return false;
+    }
     MinesBoard trial;
     mines_board_reset(&trial, board->side, board->mine_count);
     unsigned cells = board->side * board->side;

@@ -1,111 +1,128 @@
-#include "minesweeper.h"
-#include "board.h"
+#include "view.h"
 
-/** Campaign length, generation budget and incomplete arrow timeout in milliseconds. */
-enum { LEVELS = 3, SEARCH_LIMIT = 128, BANDED_ATTEMPTS = 24, ESCAPE_TIMEOUT = 125 };
-
-/** Progress through play, generation, and result screens. */
-typedef enum { PLAYING, SEARCHING, CLEARED, LOST, RETURN_TO_MENU } SessionState;
+/** Bounds on candidate checks, escape sequences, and redraws during pasted input. */
+enum {
+    SEARCH_LIMIT = 128, BANDED_ATTEMPTS = 24,
+    ESCAPE_TIMEOUT_MS = 125, EDIT_QUIET_MS = 40
+};
 
 /** Incomplete input from ANSI cursor and application cursor keys. */
-typedef enum { KEY_BYTE, KEY_ESCAPE, KEY_ARROW } InputState;
+typedef enum { KEY_BYTE, KEY_ESCAPE, KEY_CSI, KEY_SS3 } InputState;
 
-/** Board and presentation state for the one active game instance. */
+/** Two fixed slots let the player switch between a new game and a suspended one. */
+static MinesRun runs[2];
+
+/** Controller state, separate from the board and timer saved in a run. */
 static struct {
-    MinesBoard board;          /**< Current level's field. */
-    GameDifficulty difficulty; /**< Mine density selected by the player. */
-    unsigned level;            /**< Zero-based level index. */
-    uint8_t x, y;              /**< Cursor location in the field. */
-    uint8_t first;             /**< Starting cell for replay and generation. */
-    MinesLayout layout;        /**< Placement family of the replayable board. */
-    uint32_t seed;             /**< Seed of the current candidate or accepted field. */
-    uint32_t elapsed_ms;       /**< Time input used to vary new fields. */
-    uint32_t played_ms;        /**< Time since the first open, frozen at the result. */
-    unsigned attempts_left;    /**< Remaining solver checks for this first click. */
-    SessionState state;        /**< Active game or result screen. */
-    InputState input;          /**< State of an incomplete escape sequence. */
-    uint32_t escape_ms;        /**< Age of the current escape sequence. */
-    bool logical;              /**< Require a solution with local deductions. */
-    bool search_failed;        /**< Show the retry message after the search budget. */
-    bool dirty;                /**< Refresh the entire screen on board changes. */
-    bool hud_dirty;            /**< Refresh only the header on a timer change. */
+    MinesRun *run;                  /**< Current run. */
+    MinesRun *saved;                /**< Suspended run, if any. */
+    MinesScreen screen;             /**< Current board, form, or pause screen. */
+    InputState input;               /**< State of an incomplete ANSI sequence. */
+    uint32_t escape_ms;             /**< Age of the current ANSI sequence. */
+    uint32_t elapsed_ms;            /**< Input timing used when making new fields. */
+    unsigned attempts_left;        /**< Remaining solver checks for this first move. */
+    char field[MINES_CODE_CAPACITY]; /**< Editable layout code or mine count. */
+    uint8_t field_len;              /**< Number of stored characters. */
+    unsigned excess_chars;          /**< Extra characters that must be erased. */
+    uint8_t custom_side;            /**< Size selected in the custom field form. */
+    uint32_t edit_wait_ms;          /**< Delay before painting input so UART pastes can finish. */
+    bool invalid_field;             /**< Show the form's validation error. */
+    bool last_cr;                   /**< Suppress LF immediately following a CR. */
+    bool search_failed;             /**< Show a retry message when candidate checks fail. */
+    bool dirty;                     /**< Update the board or current screen. */
+    bool hud_dirty;                 /**< Update only the board's header. */
 } session;
 
 /** Odd stride spreads nearby generator states across the 32-bit seed space. */
 static const uint32_t seed_stride = 0x9e3779b9u;
 
-/** Vary the layout even when two games receive identical key timings. */
+/** Vary the layout when two games receive identical key timings. */
 static uint32_t entropy;
 
-/** Prepare a new board while retaining the difficulty and solver preference. */
-static void prepare_level(unsigned level)
+/** Switch screens and request a redraw. */
+static void show(MinesScreen screen)
 {
-    unsigned side = 8 + 2 * level;
-    unsigned density = 18;
-
-    if (session.difficulty == GAME_EASY) {
-        density = 12;
-    } else if (session.difficulty == GAME_HARD) {
-        density = 25;
-    }
-    mines_board_reset(&session.board, side, side * side * density / 100);
-    session.level = level;
-    session.x = 0;
-    session.y = 0;
-    session.played_ms = 0;
-    session.state = PLAYING;
-    session.input = KEY_BYTE;
-    session.search_failed = false;
+    session.screen = screen;
+    session.edit_wait_ms = 0;
     session.dirty = true;
     session.hud_dirty = false;
 }
 
-/** Start a new campaign with the difficulty from the shared menu. */
+/** Start a new field of this run's chosen size and mine count. */
+static void prepare_board(uint8_t side, uint8_t count)
+{
+    MinesRun *run = session.run;
+    mines_board_reset(&run->board, side, count);
+    run->cursor = 0;
+    run->played_ms = 0;
+    session.search_failed = false;
+    mines_view_invalidate();
+    show(MINES_PLAY);
+}
+
+/** Prepare the numbered campaign level with this run's difficulty. */
+static void prepare_level(unsigned level)
+{
+    MinesRun *run = session.run;
+    unsigned side = MINES_MIN_SIDE + 2 * level;
+    unsigned density = 18;
+    if (run->difficulty == GAME_EASY) {
+        density = 12;
+    } else if (run->difficulty == GAME_HARD) {
+        density = 25;
+    }
+    run->mode = MINES_CAMPAIGN;
+    run->level = level;
+    prepare_board(side, side * side * density / 100);
+}
+
+/** Enter Minesweeper and reserve the other slot if a run is suspended. */
 static void start_game(GameDifficulty difficulty)
 {
-    session.difficulty = difficulty;
+    session.run = session.saved == &runs[0] ? &runs[1] : &runs[0];
+    session.run->difficulty = difficulty;
+    session.run->logical = false;
     session.elapsed_ms = 0;
-    session.logical = false;
+    session.input = KEY_BYTE;
+    session.last_cr = false;
     prepare_level(0);
 }
 
 /** Apply the result of revealing a cell or its neighbors. */
 static void apply_result(MinesResult result)
 {
-    if (result == MINES_NO_CHANGE) {
-        return;
-    }
     if (result == MINES_WON) {
-        session.state = CLEARED;
+        show(MINES_WIN);
     } else if (result == MINES_LOST) {
-        session.state = LOST;
+        show(MINES_LOSS);
+    } else if (result == MINES_OPENED) {
+        session.dirty = true;
     }
-    session.dirty = true;
 }
 
 /** Generate a candidate and accept it only if the solver clears it. */
 static void search_step(void)
 {
+    MinesRun *run = session.run;
     if (session.attempts_left == 1) {
-        session.layout = MINES_COMPACT;
+        run->layout = MINES_COMPACT;
     } else if (session.attempts_left <= BANDED_ATTEMPTS) {
-        session.layout = MINES_BANDED;
+        run->layout = MINES_BANDED;
     }
-    mines_board_generate(&session.board, session.first, session.seed, session.layout);
-    if (mines_board_solvable(&session.board, session.first)) {
-        session.state = PLAYING;
-        apply_result(mines_open(&session.board, session.first));
+    mines_board_generate(&run->board, run->first, run->seed, run->layout);
+    if (mines_board_solvable(&run->board, run->first)) {
+        show(MINES_PLAY);
+        apply_result(mines_open(&run->board, run->first));
         return;
     }
 
-    session.board.generated = false;
+    run->board.generated = false;
     --session.attempts_left;
     if (session.attempts_left == 0) {
-        session.state = PLAYING;
         session.search_failed = true;
-        session.dirty = true;
+        show(MINES_PLAY);
     } else {
-        session.seed += seed_stride;
+        run->seed += seed_stride;
     }
 }
 
@@ -115,22 +132,34 @@ static void tick(uint32_t elapsed_ms)
     session.elapsed_ms += elapsed_ms;
     if (session.input != KEY_BYTE) {
         session.escape_ms += elapsed_ms;
-        if (session.escape_ms >= ESCAPE_TIMEOUT) {
+        if (session.escape_ms >= ESCAPE_TIMEOUT_MS) {
             session.input = KEY_BYTE;
         }
     }
-    if (session.state == SEARCHING) {
+
+    if (session.edit_wait_ms != 0) {
+        if (elapsed_ms < session.edit_wait_ms) {
+            session.edit_wait_ms -= elapsed_ms;
+        } else {
+            session.edit_wait_ms = 0;
+            session.dirty = true;
+        }
+    }
+
+    MinesRun *run = session.run;
+    if (session.screen == MINES_SEARCH) {
         search_step();
-    } else if (session.state == PLAYING && session.board.generated) {
-        uint32_t previous_seconds = session.played_ms / 1000;
-        session.played_ms += elapsed_ms;
-        if (session.played_ms / 1000 != previous_seconds) {
+    } else if (session.screen == MINES_PLAY && run->board.generated) {
+        uint32_t previous_ms = run->played_ms;
+        uint32_t next = previous_ms + elapsed_ms;
+        run->played_ms = next >= previous_ms ? next : UINT32_MAX;
+        if (run->played_ms / 1000 != previous_ms / 1000) {
             session.hud_dirty = true;
         }
     }
 }
 
-/** Decode bare ANSI CSI and SS3 arrows, leaving ASCII commands unchanged. */
+/** Decode ANSI arrows and skip unrelated CSI sequences, including paste wrappers. */
 static char decode_key(char key)
 {
     if (key == '\033') {
@@ -139,10 +168,19 @@ static char decode_key(char key)
         return '\0';
     }
     if (session.input == KEY_ESCAPE) {
-        session.input = (key == '[' || key == 'O') ? KEY_ARROW : KEY_BYTE;
+        if (key == '[') {
+            session.input = KEY_CSI;
+        } else if (key == 'O') {
+            session.input = KEY_SS3;
+        } else {
+            session.input = KEY_BYTE;
+        }
         return '\0';
     }
-    if (session.input == KEY_ARROW) {
+    if (session.input == KEY_CSI || session.input == KEY_SS3) {
+        if (session.input == KEY_CSI && key >= ' ' && key <= '?') {
+            return '\0';
+        }
         session.input = KEY_BYTE;
         switch (key) {
         case 'A': return 'w';
@@ -158,242 +196,274 @@ static char decode_key(char key)
     return key;
 }
 
-/** Open a cell, generating or scheduling a layout on the first action. */
-static void open_cell(uint8_t index)
+/** Open the recorded starting cell of an exact generated or replayed field. */
+static void open_first(MinesRun *run)
 {
-    if (session.board.generated) {
-        apply_result(mines_open(&session.board, index));
+    mines_board_generate(&run->board, run->first, run->seed, run->layout);
+    run->cursor = run->first;
+    apply_result(mines_open(&run->board, run->first));
+}
+
+/** Open the cursor, starting generation if it is the first action. */
+static void open_cell(MinesRun *run)
+{
+    if (run->board.generated) {
+        apply_result(mines_open(&run->board, run->cursor));
         return;
     }
-    if (session.board.cells[index] & CELL_FLAG) {
+    if (run->board.cells[run->cursor] & CELL_FLAG) {
         return;
     }
 
-    session.first = index;
-    session.layout = MINES_SCATTERED;
+    run->first = run->cursor;
+    run->layout = MINES_SCATTERED;
     entropy += seed_stride;
-    session.seed = entropy ^ session.elapsed_ms;
+    run->seed = entropy ^ session.elapsed_ms;
     session.search_failed = false;
-
-    if (session.logical) {
+    if (run->logical) {
         session.attempts_left = SEARCH_LIMIT;
-        session.state = SEARCHING;
+        show(MINES_SEARCH);
+    } else {
+        open_first(run);
+    }
+}
+
+/** Move the field cursor without wrapping across its edges. */
+static void move_cursor(MinesRun *run, int dx, int dy)
+{
+    int side = run->board.side;
+    int x = run->cursor % side + dx;
+    int y = run->cursor / side + dy;
+    if (x >= 0 && x < side && y >= 0 && y < side) {
+        run->cursor = (uint8_t)(y * side + x);
         session.dirty = true;
-    } else {
-        mines_board_generate(&session.board, index, session.seed, session.layout);
-        apply_result(mines_open(&session.board, index));
     }
 }
 
-/** Apply a movement or board action and request a redraw on changes. */
-static void play_key(char key)
+/** Open an editor with an empty buffer. */
+static void start_form(MinesScreen screen)
 {
-    uint8_t index = session.y * session.board.side + session.x;
-    switch (key) {
-    case 'w':
-        if (session.y == 0) return;
-        --session.y;
-        break;
-    case 's':
-        if (session.y + 1 == session.board.side) return;
-        ++session.y;
-        break;
-    case 'a':
-        if (session.x == 0) return;
-        --session.x;
-        break;
-    case 'd':
-        if (session.x + 1 == session.board.side) return;
-        ++session.x;
-        break;
-    case 'f':
-        if (!mines_flag(&session.board, index)) return;
-        break;
-    case 'g':
-        if (session.board.generated) return;
-        session.logical = !session.logical;
-        session.search_failed = false;
-        break;
-    case ' ':
-    case '\r':
-    case '\n':
-        open_cell(index);
-        return;
-    default:
-        return;
-    }
-    session.dirty = true;
+    session.field_len = 0;
+    session.field[0] = '\0';
+    session.excess_chars = 0;
+    session.invalid_field = false;
+    show(screen);
 }
 
-/** Replay the current layout from its original first click with a fresh clock. */
-static void replay(void)
+/** Start a single imported board from the code's original first move. */
+static void load_layout(const MinesCode *code)
 {
-    prepare_level(session.level);
-    session.x = session.first % session.board.side;
-    session.y = session.first / session.board.side;
-    mines_board_generate(&session.board, session.first, session.seed, session.layout);
-    apply_result(mines_open(&session.board, session.first));
+    MinesRun *run = session.run;
+    run->mode = MINES_SHARED;
+    run->logical = false;
+    prepare_board(code->side, code->mine_count);
+    run->first = code->first;
+    run->seed = code->seed;
+    run->layout = code->type;
+    open_first(run);
 }
 
-/** Route input to the active board, generator, or result screen. */
-static void key_input(char input)
+/** Confirm a custom field or load a layout after validating the whole input. */
+static void submit_form(void)
 {
-    char key = decode_key(input);
-    if (key == 'q') {
-        session.state = RETURN_TO_MENU;
-    } else if (session.state == PLAYING) {
-        play_key(key);
-    } else if (session.state == CLEARED || session.state == LOST) {
-        if (key == 'n' && session.state == CLEARED && session.level + 1 < LEVELS) {
-            prepare_level(session.level + 1);
-        } else if (key == 'r') {
-            prepare_level(0);
-        } else if (key == 'b') {
-            replay();
-        }
-    }
-}
-
-/** Render an unsigned decimal value without a hosted C library. */
-static void write_number(uint32_t value)
-{
-    char digits[11];
-    unsigned i = sizeof digits - 1;
-    digits[i] = '\0';
-    do {
-        digits[--i] = '0' + value % 10;
-        value /= 10;
-    } while (value);
-    console_write(digits + i);
-}
-
-/** Show level, difficulty, mine counter, timer and current generation mode. */
-static void draw_header(void)
-{
-    console_write("\033[H\033[36mMinesweeper\033[0m  L");
-    write_number(session.level + 1);
-    console_write("/3  ");
-    switch (session.difficulty) {
-    case GAME_EASY: console_write("Easy"); break;
-    case GAME_HARD: console_write("Hard"); break;
-    default: console_write("Normal"); break;
-    }
-
-    console_write("  Mines ");
-    write_number(session.board.mine_count);
-    console_write("  Left ");
-    int left = session.board.mine_count - session.board.flagged;
-    if (left < 0) {
-        console_write("-");
-        left = -left;
-    }
-    write_number(left);
-    console_write("  ");
-    write_number(session.played_ms / 1000);
-    console_write(session.logical ? "s  Logic" : "s  Classic");
-    console_write("\033[K\r\n");
-}
-
-/** Render one cell with a symbol independent of its ANSI color. */
-static void draw_cell(uint8_t index, bool selected)
-{
-    uint8_t cell = session.board.cells[index];
-    char symbol = '.';
-    const char *color = "\033[37m";
-
-    if (session.state == LOST && index == session.board.hit) {
-        symbol = '!';
-        color = "\033[30;101m";
-    } else if (cell & CELL_FLAG) {
-        bool wrong = session.state == LOST && !(cell & CELL_MINE);
-        symbol = wrong ? 'X' : 'F';
-        color = wrong ? "\033[31m" : "\033[33m";
-    } else if (session.state == LOST && (cell & CELL_MINE)) {
-        symbol = '*';
-        color = "\033[31m";
-    } else if (cell & CELL_OPEN) {
-        uint8_t nearby = mines_neighbors(&session.board, index);
-        symbol = nearby ? '0' + nearby : ' ';
-        color = "\033[36m";
-    }
-
-    char label[] = {selected ? '[' : ' ', symbol, selected ? ']' : ' ', '\0'};
-    console_write(color);
-    console_write(label);
-    console_write("\033[0m");
-}
-
-/** List reproducible layout parameters below a finished game. */
-static void draw_layout(void)
-{
-    console_write("\033[K\r\nLayout ");
-    write_number(session.board.side);
-    console_write("/");
-    write_number(session.board.mine_count);
-    console_write("/");
-    write_number(session.first);
-    console_write("/");
-    write_number(session.seed);
-    console_write("/");
-    write_number(session.layout);
-}
-
-/** Display controls valid for the current game state. */
-static void draw_controls(void)
-{
-    if (session.state == LOST) {
-        console_write("\033[31mMine hit!\033[0m  B replay | R restart | Q menu");
-        draw_layout();
-    } else if (session.state == CLEARED) {
-        if (session.level + 1 == LEVELS) {
-            console_write("\033[32mCampaign complete!\033[0m");
+    if (session.excess_chars == 0) {
+        if (session.screen == MINES_COUNT_FORM) {
+            uint8_t count;
+            if (mines_parse_count(session.field, session.custom_side, &count)) {
+                session.run->mode = MINES_CUSTOM;
+                session.run->logical = false;
+                prepare_board(session.custom_side, count);
+                return;
+            }
         } else {
-            console_write("\033[32mLevel cleared!\033[0m  N next |");
-        }
-        console_write("  B replay | R restart | Q menu");
-        draw_layout();
-    } else if (session.state == SEARCHING) {
-        console_write("Checking layouts... Q menu");
-    } else {
-        console_write("Arrows/WASD move | Space/Enter open | F flag | Q menu");
-        if (!session.board.generated) {
-            console_write("\033[K\r\n");
-            if (session.search_failed) {
-                console_write("Try Space again or G to switch to Classic");
-            } else {
-                console_write("G toggle Logic before opening");
+            MinesCode code;
+            if (mines_parse_code(session.field, &code)) {
+                load_layout(&code);
+                return;
             }
         }
     }
+    session.invalid_field = true;
+    session.edit_wait_ms = 0;
+    session.dirty = true;
 }
 
-/** Refresh the full board on actions and just the header on timer updates. */
-static void draw(void)
+/** Route commands while entering a board size, mine count, or layout code. */
+static void form_key(char key)
 {
-    if (!session.dirty && !session.hud_dirty) {
+    if (key == 'q') {
+        show(MINES_PLAY);
         return;
     }
-    draw_header();
-    session.hud_dirty = false;
+    if (session.screen == MINES_SIZE_FORM) {
+        if (key >= '1' && key <= '3') {
+            session.custom_side = MINES_MIN_SIDE + 2 * (key - '1');
+            start_form(MINES_COUNT_FORM);
+        }
+        return;
+    }
+    if (key == '\r' || key == '\n') {
+        submit_form();
+        return;
+    }
+    if (key == '\b' || key == '\x7f') {
+        if (session.excess_chars != 0) {
+            --session.excess_chars;
+        } else if (session.field_len != 0) {
+            session.field[--session.field_len] = '\0';
+        }
+    } else if ((key >= '0' && key <= '9') || (key == '/' && session.screen == MINES_LOAD_FORM)) {
+        if (session.field_len == sizeof session.field - 1) {
+            ++session.excess_chars;
+        } else {
+            session.field[session.field_len++] = key;
+            session.field[session.field_len] = '\0';
+        }
+    } else {
+        return;
+    }
+
+    session.invalid_field = false;
+    session.edit_wait_ms = EDIT_QUIET_MS;
+}
+
+/** Process actions available in a board that has yet to be opened. */
+static void setup_key(MinesRun *run, char key)
+{
+    if (run->board.generated) {
+        return;
+    }
+
+    if (key == 'g' && mines_board_logic_allowed(&run->board)) {
+        run->logical = !run->logical;
+        session.search_failed = false;
+        session.dirty = true;
+    } else if (key == 'c') {
+        start_form(MINES_SIZE_FORM);
+    } else if (key == 'l') {
+        start_form(MINES_LOAD_FORM);
+    } else if (key == 'u' && session.saved) {
+        session.run = session.saved;
+        session.saved = 0;
+        mines_view_invalidate();
+        show(MINES_PLAY);
+    }
+}
+
+/** Apply a movement, mark, reveal, or setup action. */
+static void play_key(char key)
+{
+    MinesRun *run = session.run;
+    switch (key) {
+    case 'w': move_cursor(run, 0, -1); break;
+    case 's': move_cursor(run, 0, 1); break;
+    case 'a': move_cursor(run, -1, 0); break;
+    case 'd': move_cursor(run, 1, 0); break;
+    case 'f':
+        if (mines_flag(&run->board, run->cursor)) session.dirty = true;
+        break;
+    case '?':
+        if (mines_question(&run->board, run->cursor)) session.dirty = true;
+        break;
+    case ' ':
+    case '\r':
+    case '\n': open_cell(run); break;
+    case 'p': show(MINES_PAUSE); break;
+    default: setup_key(run, key); break;
+    }
+}
+
+/** Replay a result, restart, or advance the campaign. */
+static void result_key(char key)
+{
+    MinesRun *run = session.run;
+    if (key == 'n' && session.screen == MINES_WIN && run->mode == MINES_CAMPAIGN &&
+        run->level + 1 < MINES_LEVELS) {
+        prepare_level(run->level + 1);
+    } else if (key == 'b') {
+        prepare_board(run->board.side, run->board.mine_count);
+        open_first(run);
+    } else if (key == 'r') {
+        if (run->mode == MINES_CUSTOM) {
+            prepare_board(run->board.side, run->board.mine_count);
+        } else {
+            prepare_level(0);
+        }
+    }
+}
+
+/** Return to the main menu, keeping at most one unfinished board. */
+static void leave(void)
+{
+    if ((session.screen == MINES_PLAY || session.screen == MINES_PAUSE) &&
+        session.run->board.generated) {
+        session.saved = session.run;
+    }
+    show(MINES_EXIT);
+}
+
+/** Dispatch raw UART input, suppressing CRLF double actions. */
+static void key_input(char input)
+{
+    bool repeated_enter = session.last_cr && input == '\n';
+    session.last_cr = input == '\r';
+    if (repeated_enter) {
+        return;
+    }
+
+    char key = decode_key(input);
+    if (key == '\0') {
+        return;
+    }
+
+    if (session.screen == MINES_SIZE_FORM || session.screen == MINES_COUNT_FORM ||
+        session.screen == MINES_LOAD_FORM) {
+        form_key(key);
+    } else if (key == 'q') {
+        leave();
+    } else if (session.screen == MINES_PLAY) {
+        play_key(key);
+    } else if (session.screen == MINES_PAUSE && key == 'p') {
+        show(MINES_PLAY);
+    } else if (session.screen == MINES_WIN || session.screen == MINES_LOSS) {
+        result_key(key);
+    }
+}
+
+/** Refresh just the clock line for a timer event or draw the active screen. */
+static void draw(void)
+{
     if (!session.dirty) {
+        if (session.hud_dirty) {
+            mines_view_hud(session.run);
+            session.hud_dirty = false;
+        }
         return;
     }
     session.dirty = false;
+    session.hud_dirty = false;
 
-    for (uint8_t y = 0; y < session.board.side; ++y) {
-        for (uint8_t x = 0; x < session.board.side; ++x) {
-            draw_cell(y * session.board.side + x, x == session.x && y == session.y);
-        }
-        console_write("\033[K\r\n");
+    switch (session.screen) {
+    case MINES_SIZE_FORM:
+    case MINES_COUNT_FORM:
+    case MINES_LOAD_FORM:
+        mines_view_form(session.screen, session.custom_side, session.field, session.invalid_field);
+        break;
+    case MINES_PAUSE:
+        mines_view_pause(session.run);
+        break;
+    case MINES_EXIT:
+        break;
+    default:
+        mines_view_board(session.run, session.screen, session.saved != 0, session.search_failed);
+        break;
     }
-    draw_controls();
-    console_write("\033[J");
 }
 
 /** Indicate that the application should restore the main menu. */
 static bool finished(void)
 {
-    return session.state == RETURN_TO_MENU;
+    return session.screen == MINES_EXIT;
 }
 
 const Game minesweeper_game = {

@@ -2,7 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "board.h"
+#include "layout.h"
 #include "minesweeper.h"
 
 /** Last frame captured by the host UART substitute. */
@@ -63,11 +63,12 @@ static void test_reveal(void)
 
     board.generated = true;
     board.cells[63] |= CELL_MINE;
+    assert(mines_question(&board, 2));
     assert(mines_open(&board, 1) == MINES_NO_CHANGE);
     assert(mines_neighbors(&board, 54) == 1);
     assert(mines_neighbors(&board, 0) == 0);
     assert(mines_open(&board, 0) == MINES_OPENED);
-    assert(board.remaining == 1);
+    assert(board.remaining == 1 && board.cells[2] == CELL_OPEN);
     assert(!mines_flag(&board, 0));
     assert(mines_flag(&board, 1) && board.flagged == 0);
     assert(mines_open(&board, 1) == MINES_WON);
@@ -84,7 +85,9 @@ static void test_chord(void)
     assert(mines_open(&board, 9) == MINES_OPENED);
     assert(mines_open(&board, 9) == MINES_NO_CHANGE);
     assert(mines_flag(&board, 0));
+    assert(mines_question(&board, 10));
     assert(mines_open(&board, 9) == MINES_WON);
+    assert(board.cells[10] == CELL_OPEN);
     assert(board.hit == MINES_NO_HIT);
 
     mines_board_reset(&board, 8, 1);
@@ -110,16 +113,15 @@ static void test_solver(void)
     assert(solvable > 0 && solvable < 128);
 }
 
-/** Check every first cell, level, density and orientation of the fallback. */
+/** Check every first cell, supported Logic count, and fallback orientation. */
 static void test_compact_layouts(void)
 {
-    const unsigned densities[] = {12, 18, 25};
     MinesBoard board;
     for (unsigned side = 8; side <= 12; side += 2) {
-        for (unsigned d = 0; d < sizeof densities / sizeof densities[0]; ++d) {
+        for (unsigned count = 1; count <= side * side / 4; ++count) {
             for (unsigned first = 0; first < side * side; ++first) {
                 for (unsigned orientation = 0; orientation < 4; ++orientation) {
-                    mines_board_reset(&board, side, side * side * densities[d] / 100);
+                    mines_board_reset(&board, side, count);
                     mines_board_generate(&board, first, orientation, MINES_COMPACT);
                     assert(mines_neighbors(&board, first) == 0);
                     assert(mines_board_solvable(&board, first));
@@ -148,7 +150,8 @@ static void test_session(void)
     mines_board_generate(&expected, 0, 0x9e3779b9u, MINES_SCATTERED);
 
     minesweeper_game.start(GAME_EASY);
-    expect_frame("L1/3  Easy  Mines 7  Left 7  0s");
+    expect_frame("L1/3  Easy  Classic");
+    assert(strstr(frame, "Mines 7  Left 7  Time 0s  Cell A1"));
     minesweeper_game.key(' ');
     unsigned x = 0, y = 0;
     for (unsigned i = 0; i < 64; ++i) {
@@ -159,7 +162,8 @@ static void test_session(void)
     }
     expect_frame("Level cleared!");
     minesweeper_game.key('n');
-    expect_frame("L2/3  Easy  Mines 12  Left 12  0s");
+    expect_frame("L2/3  Easy  Classic");
+    assert(strstr(frame, "Mines 12  Left 12  Time 0s  Cell A1"));
     minesweeper_game.key('q');
     assert(minesweeper_game.finished());
 }
@@ -178,11 +182,11 @@ static void test_loss_and_replay(void)
 
     minesweeper_game.start(GAME_HARD);
     minesweeper_game.key(' ');
-    expect_frame("L1/3  Hard  Mines 16  Left 16  0s");
+    expect_frame("Mines 16  Left 16  Time 0s  Cell A1");
     char first_frame[sizeof frame];
     strcpy(first_frame, frame);
     minesweeper_game.tick(1200);
-    expect_frame("  1s  Classic");
+    expect_frame("Time 1s  Cell A1");
     assert(!strstr(frame, "WASD"));  /* A timer tick updates only the header. */
 
     minesweeper_game.key('\033');
@@ -205,13 +209,13 @@ static void test_loss_and_replay(void)
     go_to(mine, &x, &y);
     minesweeper_game.key(' ');
     expect_frame("Mine hit!");
-    assert(strstr(frame, "[!]") && strstr(frame, "\033[31m X "));
+    assert(strstr(frame, "[!]") && strstr(frame, "\033[91m X "));
     assert(strstr(frame, "Layout 8/16/0/1013904242/0"));
     minesweeper_game.tick(2000);
     expect_frame("");
     assert(frame[0] == '\0');
     minesweeper_game.key('b');
-    expect_frame("Left 16  0s");
+    expect_frame("Left 16  Time 0s");
     assert(strcmp(frame, first_frame) == 0);
 }
 
@@ -220,35 +224,138 @@ static void test_logic_session(void)
 {
     minesweeper_game.start(GAME_HARD);
     minesweeper_game.key('g');
-    expect_frame("0s  Logic");
+    expect_frame("Hard  Logic");
     minesweeper_game.key(' ');
     expect_frame("Checking layouts");
     for (unsigned attempt = 0; attempt < 128; ++attempt) {
         minesweeper_game.tick(1);
     }
-    expect_frame("\033[36m[ ]");
-    assert(!strstr(frame, "Try Space again"));
+    expect_frame("\033[30;107m[ ]");
+    assert(!strstr(frame, "Layout search failed"));
+}
+
+/** Validate input boundaries and the last safe starting square. */
+static void test_code_parser(void)
+{
+    MinesCode code;
+    uint8_t count;
+    assert(mines_parse_code("12/135/143/4294967295/2", &code));
+    assert(code.side == 12 && code.mine_count == 135 && code.first == 143 &&
+           code.seed == UINT32_MAX && code.type == MINES_BANDED);
+    assert(!mines_parse_code("12/135/143/4294967296/2", &code));
+    assert(!mines_parse_code("12/136/143/1/0", &code));
+    assert(!mines_parse_code("12/135/144/1/0", &code));
+    assert(!mines_parse_code("9/12/0/0/0", &code));
+    assert(!mines_parse_code("8/17//1/0", &code));
+    assert(!mines_parse_code("8/17/0/1", &code));
+    assert(!mines_parse_code("8/17/0/1/3", &code));
+    assert(!mines_parse_code("8/17/0/1/0 extra", &code));
+    assert(!mines_parse_code("", &code));
+    assert(mines_parse_count("55", 8, &count) && count == 55);
+    assert(!mines_parse_count("56", 8, &count));
+    assert(!mines_parse_count("0", 8, &count));
+    assert(!mines_parse_count("42949672960", 8, &count));
+}
+
+/** Send a sequence of UART bytes to the active game. */
+static void send_text(const char *input)
+{
+    while (*input) {
+        minesweeper_game.key(*input++);
+    }
+}
+
+/** Check a custom game's validation, board size and valid controls. */
+static void test_custom_session(void)
+{
+    minesweeper_game.start(GAME_NORMAL);
+    send_text("c3");
+    expect_frame("Enter mine count (1-135)");
+    send_text("136\r\n");
+    expect_frame("outside the allowed range");
+    send_text("\b\b\b28\r\n");
+    expect_frame("Custom  Classic");
+    assert(strstr(frame, "Mines 28  Left 28  Time 0s  Cell A1"));
+    assert(strstr(frame, " K  L "));
+    assert(strstr(frame, "\033[30;107m[.]"));
+    minesweeper_game.key('?');
+    expect_frame("\033[30;107m[?]");
+    assert(strstr(frame, "Left 28"));
+    minesweeper_game.key('f');
+    expect_frame("[F]");
+    assert(strstr(frame, "Left 27"));
+    minesweeper_game.key('?');
+    expect_frame("[?]");
+    assert(strstr(frame, "Left 28"));
+    send_text("g ");
+    expect_frame("Checking layouts");
+    for (unsigned i = 0; i < 128; ++i) {
+        minesweeper_game.tick(1);
+    }
+    expect_frame("Custom  Logic");
+    assert(strstr(frame, "\033[30;107m[ ]"));
+    minesweeper_game.key('q');
+}
+
+/** Test a pasted shared code, session timing, and resume from the common menu. */
+static void test_shared_and_pause(void)
+{
+    minesweeper_game.start(GAME_HARD);
+    minesweeper_game.key('l');
+    expect_frame("Load layout");
+    send_text("12/135/143/4294967295/29\r");
+    expect_frame("Invalid layout code.");
+    send_text("\bq");
+
+    // The closing bit is deliberately delivered as an ANSI bracketed-paste wrapper.
+    send_text("l\033[200~8/16/0/1013904242/0\033[201~\r\n");
+    expect_frame("Shared layout");
+    assert(strstr(frame, "Mines 16  Left 16  Time 0s  Cell A1"));
+    assert(strstr(frame, "\033[94m 1 ") && strstr(frame, "\033[92m 2 "));
+
+    send_text("\033[1;2C");
+    expect_frame("Cell B1");
+    assert(strstr(frame, "\033[30;107m[ ]"));
+    assert(!strstr(frame, " A  B  C "));  /* Moving only repaints the changed cells. */
+    minesweeper_game.tick(1200);
+    expect_frame("Time 1s  Cell B1");
+
+    minesweeper_game.key('p');
+    expect_frame("Minesweeper paused");
+    assert(strstr(frame, "Time 1s") && !strstr(frame, " A  B  C "));
+    minesweeper_game.tick(5000);
+    expect_frame("");
+    assert(frame[0] == '\0');
+    minesweeper_game.key('p');
+    expect_frame("Time 1s  Cell B1");
+
+    send_text("pq");
+    assert(minesweeper_game.finished());
+    minesweeper_game.start(GAME_EASY);
+    expect_frame("U continue");
+    minesweeper_game.key('u');
+    expect_frame("Shared layout");
+    assert(strstr(frame, "Left 16  Time 1s  Cell B1"));
+    minesweeper_game.tick(1000);
+    expect_frame("Time 2s  Cell B1");
+    minesweeper_game.key('q');
 }
 
 /** Print a reproducible mine layout from the result screen's Layout code. */
-static int print_layout(const char *code)
+static int print_layout(const char *input)
 {
-    unsigned side, count, first, seed, layout;
-    char extra;
-    if (sscanf(code, "%u/%u/%u/%u/%u%c", &side, &count, &first, &seed, &layout, &extra) != 5 ||
-        (side != 8 && side != 10 && side != 12) || first >= side * side ||
-        count > side * side - 9 || layout > MINES_BANDED) {
+    MinesCode code;
+    if (!mines_parse_code(input, &code)) {
         fputs("Expected Layout code: side/mines/first/seed/type\n", stderr);
         return 1;
     }
-
     MinesBoard board;
-    mines_board_reset(&board, side, count);
-    mines_board_generate(&board, first, seed, (MinesLayout)layout);
-    for (unsigned y = 0; y < side; ++y) {
-        for (unsigned x = 0; x < side; ++x) {
-            unsigned index = y * side + x;
-            putchar(index == first ? '@' : (board.cells[index] & CELL_MINE) ? '*' : '.');
+    mines_board_reset(&board, code.side, code.mine_count);
+    mines_board_generate(&board, code.first, code.seed, code.type);
+    for (unsigned y = 0; y < code.side; ++y) {
+        for (unsigned x = 0; x < code.side; ++x) {
+            unsigned index = y * code.side + x;
+            putchar(index == code.first ? '@' : (board.cells[index] & CELL_MINE) ? '*' : '.');
         }
         putchar('\n');
     }
@@ -269,5 +376,8 @@ int main(int argc, char **argv)
     test_session();
     test_loss_and_replay();
     test_logic_session();
+    test_code_parser();
+    test_custom_session();
+    test_shared_and_pause();
     puts("Minesweeper checks passed");
 }

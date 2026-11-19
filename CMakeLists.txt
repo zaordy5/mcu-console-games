@@ -6,6 +6,8 @@ add_executable(games
     src/menu.c
     src/minesweeper/board.c
     src/minesweeper/game.c
+    src/minesweeper/layout.c
+    src/minesweeper/view.c
 )
 set_target_properties(games PROPERTIES SUFFIX ".elf" C_STANDARD 11)
 target_include_directories(games PRIVATE include)

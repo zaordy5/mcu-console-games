@@ -32,34 +32,45 @@ jobs:
       - name: Test Minesweeper rules on the host
         run: |
           gcc -std=c11 -Wall -Wextra -Werror -Iinclude -Isrc/minesweeper \
-            tests/minesweeper.c src/minesweeper/board.c src/minesweeper/game.c -o build/minesweeper-check
+            tests/minesweeper.c src/minesweeper/*.c -o build/minesweeper-check
           ./build/minesweeper-check
       - name: Test menu input on Renode
         run: |
           { echo "\$bin=@$PWD/build/games.elf"; tail -n +4 emulation/stm32f4.resc; } > "$RUNNER_TEMP/menu.resc"
           args=()
+          send_byte() {
+            args+=(-e "sysbus.usart2 WriteChar $1" -e "emulation RunFor \"00:00:$2\"")
+          }
           send_keys() {
-            for byte in "$@"; do
-              args+=(-e "sysbus.usart2 WriteChar $byte" -e 'emulation RunFor "00:00:00.30"')
-            done
+            for byte in "$@"; do send_byte "$byte" 00.20; done
           }
           send_arrow() {
-            args+=(-e 'sysbus.usart2 WriteChar 27' -e 'emulation RunFor "00:00:00.01"')
-            args+=(-e 'sysbus.usart2 WriteChar 91' -e 'emulation RunFor "00:00:00.01"')
+            send_byte 27 00.01
+            send_byte 91 00.01
             send_keys "$1"
           }
-          # Tetris preview, then Easy Minesweeper with a flag and an opened safe area.
+          # Tetris preview and an Easy board with a question mark, first move, and pause.
           send_keys 49 50 113 50 49
           send_arrow 67
-          send_keys 102
+          send_keys 102 63
           send_arrow 68
           send_keys 32
           args+=(-e 'emulation RunFor "00:00:01.20"')
-          # Then try Logic on Hard and finish on the Pong preview.
-          send_keys 113 50 51 103 32
-          args+=(-e 'emulation RunFor "00:00:02.00"')
-          send_keys 113 51 50 113
-          timeout 90s "$RUNNER_TEMP/renode/renode" --disable-gui --hide-analyzers --plain "$RUNNER_TEMP/menu.resc" \
+          send_keys 112
+          args+=(-e 'emulation RunFor "00:00:02"')
+          send_keys 113 50 50 117 113
+          # A Logic board on Hard, then the custom and shared field forms.
+          send_keys 50 51 103 32
+          args+=(-e 'emulation RunFor "00:00:02"')
+          send_keys 113 50 50 99 51 50 56 13 108
+          layout='8/16/0/1013904242/0'
+          # Rapid input also exercises the form's delayed echo.
+          for ((index=0; index < ${#layout}; ++index)); do
+            printf -v byte '%d' "'${layout:index:1}"
+            send_byte "$byte" 00.004
+          done
+          send_keys 13 113 51 50 113
+          timeout 150s "$RUNNER_TEMP/renode/renode" --disable-gui --hide-analyzers --plain "$RUNNER_TEMP/menu.resc" \
             -e "sysbus.usart2 CreateFileBackend @$PWD/menu.uart true" -e 'emulation RunFor "00:00:00.3"' "${args[@]}" -e quit
           python3 - <<'PY'
           from pathlib import Path
@@ -68,25 +79,32 @@ jobs:
           frames = raw.split(clear)[1:]
           labels = [
               b"MCU Console Games", b"Choose difficulty", b"Tetris preview", b"MCU Console Games",
-              b"Choose difficulty", b"L1/3  Easy  Mines 7", b"MCU Console Games",
-              b"Choose difficulty", b"L1/3  Hard  Mines 16", b"MCU Console Games",
+              b"Choose difficulty", b"L1/3  Easy  Classic", b"MCU Console Games",
+              b"Choose difficulty", b"U continue", b"MCU Console Games",
+              b"Choose difficulty", b"L1/3  Hard  Logic", b"MCU Console Games",
+              b"Choose difficulty", b"Shared layout", b"MCU Console Games",
               b"Choose difficulty", b"Pong preview", b"MCU Console Games",
           ]
-          assert len(frames) == len(labels), raw
+          assert len(frames) == len(labels), [frame[:170] for frame in frames]
           for frame, label in zip(frames, labels):
-              assert label in frame and b"\x1b[0m" in frame, frame
-          easy = frames[5]
-          assert b"\x1b[36m[" in easy, "Opened cell was not displayed"
-          assert b"\x1b[33m[F]" in easy, "Cursor movement or flag failed"
-          assert b"\x1b[36m[ ]" in easy, "The first cell was not opened as blank"
-          assert b"Left 6  1s  Classic" in easy, "The timer or mine counter is incorrect"
-          hard = frames[8]
-          assert b"Checking layouts..." in hard and b"  0s  Logic" in hard, "Logic search did not start"
-          assert b"\x1b[36m[ ]" in hard, "Logic did not open a verified board"
-          assert b"Try Space again" not in hard, "Logic exhausted its search"
-          Path("minesweeper.uart").write_bytes(clear + easy)
+              assert label in frame and b"\x1b[0m" in frame, (label, frame[:300])
+          easy, resume, hard, custom = (frames[i] for i in (5, 8, 11, 14))
+          selected = b"\x1b[30;107m"
+          assert selected + b"[F]" in easy and selected + b"[?]" in easy
+          assert b"Left 6" in easy and b"Left 7" in easy and b"Cell B1" in easy
+          assert selected + b"[ ]" in easy and b"Time 1s  Cell A1" in easy
+          assert b"Minesweeper paused\x1b[0m\r\nTime 1s" in easy
+          assert b"L1/3  Easy  Classic" in resume and b"Time 1s  Cell A1" in resume
+          assert b"\x1b[95m ? " not in resume, "The first open should clear the question mark"
+          assert selected + b"[ ]" in hard
+          assert b"Layout search failed" not in hard
+          assert b"Enter mine count (1-135)" in custom and b"Mines 28  Left 28" in custom
+          assert b" I  J  K  L " in custom
+          assert b"Load layout" in custom and b"Mines 16  Left 16  Time 0s  Cell A1" in custom
+          assert b"\x1b[94m 1 " in custom and b"\x1b[92m 2 " in custom
+          Path("minesweeper.uart").write_bytes(clear + custom)
           PY
-          xvfb-run -a sh -ec 'xterm -geometry 64x17+0+0 -fa Monospace -fs 14 -e sh -c "cat minesweeper.uart; sleep 8" & sleep 2; import -window root -crop 680x365+0+0 menu.png'
+          xvfb-run -a sh -ec 'xterm -T "Minesweeper UART" -geometry 64x20 -fa Monospace -fs 14 -e sh -c "cat minesweeper.uart; sleep 8" & sleep 2; import -window "Minesweeper UART" menu.png'
       - uses: actions/upload-artifact@v4
         with:
           name: firmware-menu

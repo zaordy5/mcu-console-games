@@ -2,7 +2,9 @@
 
 `C / STM32F407 / Renode / Arm GCC / CMake / Doxygen`
 
-Three terminal games running from a single bare-metal STM32F407 firmware image. The shared launcher and games use a pink retrowave palette over USART2.
+**Три классические игры на одном STM32F407.** Соберите четыре линии одним ходом, создайте поле Сапёра и поделитесь его кодом или пройдите десять уровней Пинг-понга против компьютера.
+
+Three terminal games in one bare-metal firmware image, with a shared pink retrowave launcher.
 
 ## Скриншоты / Screenshots
 
@@ -31,20 +33,54 @@ Three terminal games running from a single bare-metal STM32F407 firmware image. 
 
 Меню и выбор сложности сняты в Renode. Игровые кадры восстановлены из вывода USART2 того же прогона. / The menu and difficulty screenshots were captured in Renode. Gameplay frames were rendered from the same run’s USART2 output. [Renode CI](https://github.com/zaordy5/mcu-console-games/actions/runs/44611936913)
 
+## Что можно попробовать
+
+Три игры запускаются из одного меню на STM32F407. В окне USART2 нажмите **1** для Тетриса, **2** для Сапёра или **3** для Пинг-понга. Затем выберите **Easy**, **Normal** или **Hard** клавишами `1/2/3`. Меню объясняет, что именно меняет сложность в выбранной игре. `Q` отменяет выбор или возвращает из игры в меню. Меню и игры используют общую розовую ретровейв-палитру.
+
+### Тетрис · выстраивайте комбинации на несколько ходов вперёд
+
+- **Поле 12 × 18 и семь фигур.** В каждом перемешанном наборе I, J, L, O, S, T и Z встречаются по одному разу. При новой партии последовательность повторяется, поэтому комбинацию можно отработать и показать на демонстрации.
+- **Следующая фигура и тень приземления.** Панель `Next block` помогает спланировать следующий ход. Контур на поле показывает, где остановится текущая фигура.
+- **Управление темпом.** Стрелки и WASD позволяют двигать, поворачивать и опускать фигуру на ряд. Пробел мгновенно опускает её к контуру и закрепляет. При повороте у боковой стенки игра пробует сдвинуть фигуру внутрь поля.
+- **Награда за комбинации.** Заполненные ряды удаляются одновременно. За 1, 2, 3 и 4 линии за один ход начисляется **100, 400, 900 и 1600 очков** соответственно. При четырёх линиях появляется сообщение `4 LINES +1600`.
+- **Сложность и рост скорости.** Стартовый шаг падения занимает 850 / 600 / 350 мс на Easy / Normal / Hard. Каждые пять очищенных линий повышают уровень и уменьшают интервал на 70 мс, до минимума 100 мс. Вверху видны счёт, уровень, число строк и текущий темп. Если новая фигура не помещается, экран сохраняет итог партии.
+
+[Управление и готовая последовательность для четырёх линий](docs/TETRIS.md)
+
+### Сапёр · кампания, своё поле и режим без угадывания
+
+- **Кампания на трёх полях.** После победы `N` открывает следующий уровень. Размер растёт с **8 × 8** до **10 × 10** и **12 × 12**. Сложность отвечает за плотность мин — 12%, 18% или 25% с округлением вниз.
+- **Свободная игра с выбором размера и мин.** До первого открытия нажмите `C`, выберите поле клавишами `1/2/3` и введите число мин. Можно задать от **1 до 55** мин для 8 × 8, **до 91** для 10 × 10 и **до 135** для 12 × 12. `Enter` подтверждает ввод, `Backspace` исправляет, `Q` отменяет.
+- **Classic и Logic.** `G` переключает режим до первого хода. В Logic встроенный решатель проверяет, что поле можно пройти от выбранной клетки по числам и общему количеству мин. В свободной игре режим доступен при плотности до 25% включительно.
+- **Безопасный первый ход.** Стартовая клетка и её ближайшие соседи свободны от мин. Открытие пустой области раскрывает соседние клетки до границы с цифрами или флажками. Первый открытый участок кратко подсвечивается.
+- **Пометки и быстрое открытие.** `F` ставит флажок, который защищает клетку от открытия, а `?` отмечает сомнение. Когда число соседних флажков совпадает с цифрой, игра подсвечивает клетки, которые откроет пробел или Enter. Точность расстановки флажков остаётся за игроком.
+- **Цвета и координаты помогают ориентироваться.** Двигайте курсор стрелками или WASD и открывайте клетки пробелом или Enter. У цифр разные цвета, у курсора контрастный фон, а строка и столбец подписаны координатами. Панель показывает остаток мин по флажкам, таймер, число открытых безопасных клеток и текущую координату. На экране проигрыша отдельно видны взорванная мина, другие мины и ошибочные флажки.
+- **Пауза и продолжение.** `P` скрывает поле и останавливает таймер. После выхода по `Q` можно снова открыть Сапёр и нажать `U` до первого хода, чтобы вернуть поле, курсор, пометки, уровень и время. Последняя незавершённая партия хранится в ОЗУ до сброса прошивки.
+- **Обмен полями и реванш.** Экран результата выдаёт код `Layout`. Его можно передать другому игроку и загрузить по `L`, чтобы сыграть на той же раскладке с той же первой клеткой. `B` повторяет раскладку и первый ход, `R` начинает новую партию.
+
+| Поле кампании | Easy | Normal | Hard |
+| --- | ---: | ---: | ---: |
+| 8 × 8 | 7 мин | 11 мин | 16 мин |
+| 10 × 10 | 12 мин | 18 мин | 25 мин |
+| 12 × 12 | 17 мин | 25 мин | 36 мин |
+
+[Управление, правила Logic и пример кода поля](docs/minesweeper.md)
+
+### Пинг-понг · победите компьютер на десяти уровнях
+
+- **Матч до пяти очков.** Управляйте левой ракеткой клавишами `W/S` на поле 40 × 16. Цвета ракеток совпадают с цветами счёта, а пунктир обозначает середину поля. После розыгрыша игра показывает, кто взял очко, и стрелкой указывает направление следующей подачи.
+- **Контроль отскока.** Попадание в центр ракетки отправляет мяч горизонтально. Верх и низ ракетки меняют вертикальное направление, поэтому траекторией можно управлять в розыгрыше. Следующая подача начинается через 600 мс.
+- **Три скорости реакции соперника.** Компьютер делает шаг раз в **400 / 240 / 175 мс** на Easy / Normal / Hard. При смене сложности меняется реакция компьютера, а при переходе между уровнями ускоряется сам мяч.
+- **Десять уровней.** После победы `N` начинает следующий матч на той же сложности со счётом 0:0. Интервал движения мяча сокращается с **90 мс на L1** до **36 мс на L10**. Игра проверяет столкновение на каждом шаге мяча, включая максимальную скорость. После поражения и на экране результата L10 клавиша `Q` возвращает в меню.
+
+[Управление и проверенный сценарий победы 5:4](docs/PONG.md)
+
+### Что сделано на микроконтроллере
+
+Все три игры собраны в один **bare-metal ELF для STM32F407**. Прошивка опрашивает **USART2 на 115200 бод**, использует **SysTick** для интервалов падения, движения мяча и таймера Сапёра и обновляет изменившиеся участки игровой области через ANSI-последовательности. Сборка проверена в **Renode 1.17.0** на модели STM32F4 Discovery. Для всех экранов подходит ANSI truecolor-терминал от 80 × 24 символов. [Как устроена проверка](docs/INTEGRATION.md)
+
 <details>
-<summary><strong>Русская версия</strong></summary>
-
-## Проект
-
-Тетрис, Сапёр и одиночный Пинг-понг собраны в одну прошивку `games.elf` для STM32F407. Проект разработан командой для трека «Программирование микроконтроллеров». Интеграционная сборка проверена на модели STM32F4 Discovery в Renode 1.17.0.
-
-| Игра | Возможности |
-|---|---|
-| **1 · [Тетрис](docs/TETRIS.md)** | Семь фигур, предпросмотр, тень приземления, уровни скорости и подсчёт очков. |
-| **2 · [Сапёр](docs/minesweeper.md)** | Безопасный первый ход, флажки, уровни кампании, выбор размера поля и продолжение партии. |
-| **3 · [Пинг-понг](docs/PONG.md)** | Матч до пяти очков против компьютера, три сложности и переход на следующий уровень после победы. |
-
-В главном меню нажмите номер игры, затем `1`, `2` или `3` для выбора сложности. Клавиши вводятся в окне USART2 без Enter. `Q` возвращает в меню. Для общего экрана подходит терминал от 80 × 24 символов с ANSI RGB.
+<summary><strong>Сборка, запуск и работа команды</strong></summary>
 
 ## Сборка и запуск
 
@@ -82,17 +118,34 @@ start
 <details>
 <summary><strong>English version</strong></summary>
 
-## Project
+## What you can play
 
-The firmware runs Tetris, Minesweeper, and single-player Pong on one STM32F407 target. Renode 1.17.0 emulates the STM32F4 Discovery board. The USART2 analyzer handles keyboard input and ANSI RGB output.
+One bare-metal STM32F407 firmware runs all three games with a shared pink retrowave launcher over USART2. Select a game with `1/2/3`, then select Easy, Normal, or Hard with `1/2/3`. The difficulty screen explains the setting for each game. `Q` returns to the launcher from gameplay or cancels difficulty selection.
 
-| Menu key | Game | Features |
-|---|---|---|
-| `1` | [Tetris](docs/TETRIS.md) | Seven tetrominoes, next-piece preview, landing ghost, and speed levels. |
-| `2` | [Minesweeper](docs/minesweeper.md) | Safe first move, flags, campaign levels, custom boards, and resume. |
-| `3` | [Pong](docs/PONG.md) | Single-player matches against the CPU, three difficulties, and level progression. |
+### Tetris
 
-Select a game, then press `1`, `2`, or `3` to choose a difficulty. Use `Q` to return to the launcher. Use an ANSI truecolor terminal of at least 80 × 24 characters.
+- Play on a **12 × 18** board with all seven tetrominoes appearing once per shuffled bag. Each new session repeats the same sequence, so you can rehearse a setup.
+- Plan with the next-piece preview and landing ghost. Use arrows or WASD to move, rotate, and soft drop. Press Space to hard drop and lock. Rotations near a side wall can shift the piece back inside the board.
+- Clear 1–4 rows at once for **100 / 400 / 900 / 1600** points. A four-line clear also shows `4 LINES +1600`. The HUD shows score, lines, level and drop interval.
+- Easy, Normal and Hard start at **850 / 600 / 350 ms** per row. Every five lines raises the level and shortens the interval by 70 ms, down to 100 ms. The result screen shows the final score and level when the next piece cannot spawn. [Controls and a four-line demo sequence](docs/TETRIS.md)
+
+### Minesweeper
+
+- **Campaign** progresses through **8 × 8, 10 × 10, and 12 × 12** boards with `N` after a win. Easy, Normal and Hard use **12%, 18%, and 25%** mine density, rounded down.
+- **Custom boards** let you pick any of the three sizes with `C` before your first move and set the mine count. The ranges are **1–55**, **1–91**, and **1–135** mines, respectively.
+- **Classic and Logic** are available via `G` before the first move. In Logic, the built-in solver verifies that the board can be completed from the chosen first cell. Custom Logic boards allow up to 25% mine density.
+- The **safe first move** guarantees an empty starting cell and mine-free neighbors. Empty areas expand automatically, and the first revealed area briefly lights up. Use `F` for a protective flag and `?` for an uncertain cell. When a number has enough adjacent flags, the interface previews which cells Space or Enter will reveal.
+- Use arrows or WASD to move, and Space or Enter to reveal a cell. Distinct number colors, highlighted coordinates and the cursor guide navigation. The HUD shows the timer, mine and reveal counts, and cell coordinates. The loss screen distinguishes the triggered mine, other mines and misplaced flags.
+- Pause with `P`. Exit with `Q` and press `U` on your next visit to resume the last unfinished game, including flags, cursor and time. The save is kept in RAM until reset.
+- **Share or replay boards.** Copy the `Layout` code from the results and load it with `L` to reproduce the layout and first move. `B` replays that setup and `R` starts a new game. [Controls, Logic rules and an example board code](docs/minesweeper.md)
+
+### Pong
+
+- Play **first to five** against the CPU with `W/S` on a 40 × 16 court. Color-coded paddles and scores identify both sides. After a point, the game shows who scored and the direction of the next serve, which starts after 600 ms.
+- Use the paddle edges to deflect the ball vertically. A center hit sends it horizontally. Easy, Normal and Hard set the CPU move interval to **400 / 240 / 175 ms**.
+- Win and press `N` to advance through **10 levels**. The score resets to 0–0 while the difficulty stays selected. The ball step interval drops from **90 ms at L1** to **36 ms at L10**, with collisions checked at every step. [Controls and a verified 5–4 demo sequence](docs/PONG.md)
+
+The firmware uses SysTick for game timing, USART2 at 115200 baud, and ANSI truecolor for partial screen updates. The combined image was verified on the STM32F4 Discovery model in Renode 1.17.0. Use an ANSI truecolor terminal of at least 80 × 24 characters.
 
 ## Build and run
 

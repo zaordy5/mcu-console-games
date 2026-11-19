@@ -3,14 +3,21 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-/** Maximum field side across all levels. */
-enum { MINES_MAX_SIDE = 12, MINES_MAX_CELLS = MINES_MAX_SIDE * MINES_MAX_SIDE };
+/** Field capacity and sentinel for an absent detonated cell. */
+enum {
+    MINES_MAX_SIDE = 12,
+    MINES_MAX_CELLS = MINES_MAX_SIDE * MINES_MAX_SIDE,
+    MINES_NO_HIT = MINES_MAX_CELLS
+};
 
-/** Cell flags. Unopened mines must be rendered as ordinary hidden cells. */
+/** Cell flags. Unopened mines are rendered as ordinary hidden cells. */
 enum { CELL_MINE = 1, CELL_OPEN = 2, CELL_FLAG = 4 };
 
-/** Result of an attempt to open a cell. */
+/** Result of an attempt to open a cell or its neighbors. */
 typedef enum { MINES_NO_CHANGE, MINES_OPENED, MINES_LOST, MINES_WON } MinesResult;
+
+/** Mine placement family used to reconstruct a layout. */
+typedef enum { MINES_SCATTERED, MINES_COMPACT, MINES_BANDED } MinesLayout;
 
 /** Field state for a single level, addressed by row-major cell indices. */
 typedef struct {
@@ -18,14 +25,20 @@ typedef struct {
     uint8_t side;                  /**< Width and height in cells. */
     uint8_t mine_count;            /**< Exact number of mines to place. */
     uint8_t remaining;             /**< Number of safe cells still closed. */
-    bool generated;                /**< Whether the first open generated the field. */
+    uint8_t flagged;               /**< Number of flags currently placed. */
+    uint8_t hit;                   /**< Detonated cell or MINES_NO_HIT. */
+    bool generated;                /**< Whether mines have been placed. */
 } MinesBoard;
 
 /** Reset the field for one of the supported square sizes (8, 10 or 12). */
 void mines_board_reset(MinesBoard *board, uint8_t side, uint8_t mine_count);
+/** Place mines outside the first cell and all of its neighbors using the given seed. */
+void mines_board_generate(MinesBoard *board, uint8_t first, uint32_t seed, MinesLayout layout);
 /** Count mines adjacent to a valid cell, excluding the cell itself. */
 uint8_t mines_neighbors(const MinesBoard *board, uint8_t index);
 /** Toggle a flag on a closed cell. Return true if the flag changed. */
 bool mines_flag(MinesBoard *board, uint8_t index);
-/** Open a valid cell. On the first open, generate a layout excluding that cell. */
-MinesResult mines_open(MinesBoard *board, uint8_t index, uint32_t seed);
+/** Open a cell, or chord around an open number with a matching flag count. */
+MinesResult mines_open(MinesBoard *board, uint8_t index);
+/** Check that starting at first can clear this layout using logical deductions. */
+bool mines_board_solvable(const MinesBoard *board, uint8_t first);

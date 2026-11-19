@@ -308,8 +308,8 @@ static void test_ghost_and_space(void)
     clear_output();
     tetris_game.draw();
     assert(strstr(output, "Space"));
-    assert(strstr(output, "\033[21;10H......"));
-    assert(strstr(output, "\033[38;2;205;170;209m"));
+    assert(strstr(output, "\033[20;12H\033[38;2;205;170;209m" FIELD_BG "[]"
+                          "\033[21;10H[][][]"));
     clear_output();
     tetris_game.key(' ');
     tetris_game.draw();

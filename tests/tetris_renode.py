@@ -18,6 +18,7 @@ BOTTOM_CURSOR = b"\x1b[24;40H"
 FIELD_BG = b"\x1b[48;2;36;22;56m"
 BASE_BG = b"\x1b[48;2;24;15;39m"
 I_BG = b"\x1b[48;2;194;217;255m"
+GHOST = b"\x1b[20;12H\x1b[38;2;205;170;209m" + FIELD_BG + b"[]\x1b[21;10H[][][]"
 QUAD_NOTICE = re.compile(rb"\x1b\[12;28H\x1b\[38;2;255;203;151m(?:\x1b\[48;2;24;15;39m)?4 LINES \+1600")
 QUAD_ERASE = re.compile(rb"\x1b\[12;28H(?:\x1b\[[0-9;]+m)*\x1b\[K")
 # One group of turns and horizontal moves per piece, followed by hard drop.
@@ -68,7 +69,7 @@ def check_uart(data: bytes) -> None:
     if hard.count(GAME_OVER) != 1 or normal.count(BOTTOM_CURSOR) != 1:
         raise ValueError("Hard game over or clean Normal restart was not observed")
     demo = screens[13]
-    if b"\x1b[21;10H......" not in demo or b"Space" not in demo:
+    if GHOST not in demo.split(BOTTOM_CURSOR, 1)[0] or b"Space" not in demo:
         raise ValueError("The opening frame is missing the ghost or the hard-drop hint")
     if not demo.endswith(RESET):
         raise ValueError("The demo did not reset the terminal style")

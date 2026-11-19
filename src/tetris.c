@@ -168,8 +168,8 @@ static void paint_cells(int length, uint8_t color)
     bool ghost = color == GHOST_CELL;
     style(ghost ? MUTED : BASE, ghost ? FIELD : piece_colors[color - 1u]);
     for (int i = 0; i < length; ++i) {
-        cells[2 * i] = ghost ? '.' : '[';
-        cells[2 * i + 1] = ghost ? '.' : ']';
+        cells[2 * i] = '[';
+        cells[2 * i + 1] = ']';
     }
     cells[2 * length] = '\0';
 

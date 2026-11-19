@@ -37,7 +37,7 @@ static void type_keys(const char *keys)
     }
 }
 
-/** Check that callbacks are safe while idle and that escape sequences are ignored. */
+/** Check idle callbacks, irrelevant terminal sequences and interrupted arrow keys. */
 static void test_input_boundaries(void)
 {
     assert(tetris_game.finished());
@@ -57,6 +57,12 @@ static void test_input_boundaries(void)
     tetris_game.tick(UINT32_MAX);
     tetris_game.draw();
     assert(used == 0);
+
+    tetris_game.start(GAME_EASY);
+    type_keys("\033[");
+    tetris_game.tick(400);
+    tetris_game.key('Q');
+    assert(tetris_game.finished());
 
     tetris_game.start(GAME_EASY);
     type_keys("\033[");

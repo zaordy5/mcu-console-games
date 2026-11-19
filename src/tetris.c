@@ -18,6 +18,8 @@
 #define NEXT_LEFT 30
 /** Minimum time between successful turns when the terminal repeats a held key. */
 #define ROTATION_INTERVAL_MS 180u
+/** Time to discard an incomplete terminal key sequence. */
+#define INPUT_SEQUENCE_TIMEOUT_MS 150u
 
 /** Game session used by the synchronous firmware main loop. */
 static Tetris session;
@@ -45,6 +47,8 @@ typedef enum {
 
 /** Input parser state for the active session. */
 static InputState input_state;
+/** Time before an incomplete escape sequence is discarded. */
+static uint32_t input_wait_ms;
 
 /** ANSI cell styles keyed by color, with a dark outline glyph over the fill. */
 static const char *const backgrounds[TETRIS_SHAPES + 1] = {
@@ -118,7 +122,7 @@ static void draw_frame(void)
     draw_border(TETRIS_PIECE_SIZE);
 }
 
-/** Write a run of individual cell outlines or empty spaces at the cursor. */
+/** Write cell outlines or spaces using the style already set at the cursor. */
 static void write_cells(int length, uint8_t color)
 {
     char cells[2 * TETRIS_WIDTH + 1];
@@ -128,33 +132,37 @@ static void write_cells(int length, uint8_t color)
     }
     cells[2 * length] = '\0';
 
-    if (color != 0) {
-        console_write(backgrounds[color]);
-    }
     console_write(cells);
-    if (color != 0) {
-        console_write("\033[0m");
-    }
 }
 
-/** Update only cells whose visible colors changed. */
+/** Paint each contiguous span of changed cells with a single cursor move. */
 static void draw_board(void)
 {
     for (int y = 0; y < TETRIS_HEIGHT; ++y) {
         int x = 0;
         while (x < TETRIS_WIDTH) {
-            uint8_t color = tetris_cell(&session, x, y);
-            if (color == shown[y][x]) {
+            if (tetris_cell(&session, x, y) == shown[y][x]) {
                 ++x;
                 continue;
             }
-            int first = x;
+            move_cursor((unsigned)(FIELD_TOP + y), (unsigned)(2 + 2 * x));
+            uint8_t style = 0;
             do {
-                shown[y][x++] = color;
-            } while (x < TETRIS_WIDTH && shown[y][x] != color &&
-                     tetris_cell(&session, x, y) == color);
-            move_cursor((unsigned)(FIELD_TOP + y), (unsigned)(2 + 2 * first));
-            write_cells(x - first, color);
+                uint8_t color = tetris_cell(&session, x, y);
+                int first = x;
+                do {
+                    shown[y][x++] = color;
+                } while (x < TETRIS_WIDTH && shown[y][x] != color &&
+                         tetris_cell(&session, x, y) == color);
+                if (style != color) {
+                    console_write(backgrounds[color]);
+                    style = color;
+                }
+                write_cells(x - first, color);
+            } while (x < TETRIS_WIDTH && tetris_cell(&session, x, y) != shown[y][x]);
+            if (style != 0) {
+                console_write(backgrounds[0]);
+            }
         }
     }
 }
@@ -165,7 +173,14 @@ static void draw_next(void)
     for (int y = 0; y < TETRIS_PIECE_SIZE; ++y) {
         move_cursor((unsigned)(NEXT_TOP + y), NEXT_LEFT);
         for (int x = 0; x < TETRIS_PIECE_SIZE; ++x) {
-            write_cells(1, tetris_next_cell(&session, x, y));
+            uint8_t color = tetris_next_cell(&session, x, y);
+            if (color != 0) {
+                console_write(backgrounds[color]);
+            }
+            write_cells(1, color);
+            if (color != 0) {
+                console_write(backgrounds[0]);
+            }
         }
     }
     shown_next = tetris_next_color(&session);
@@ -202,6 +217,7 @@ static void start_game(GameDifficulty difficulty)
     dirty = true;
     session_active = true;
     input_state = INPUT_KEY;
+    input_wait_ms = 0;
     rotation_wait_ms = 0;
 }
 
@@ -210,6 +226,7 @@ static char filter_key(char key)
 {
     if (key == '\033') {
         input_state = INPUT_ESCAPE;
+        input_wait_ms = INPUT_SEQUENCE_TIMEOUT_MS;
         return '\0';
     }
     if (input_state == INPUT_SEQUENCE) {
@@ -279,6 +296,13 @@ static void tick_game(uint32_t elapsed_ms)
 {
     if (session_active) {
         rotation_wait_ms = elapsed_ms >= rotation_wait_ms ? 0 : rotation_wait_ms - elapsed_ms;
+        if (input_state != INPUT_KEY) {
+            if (elapsed_ms >= input_wait_ms) {
+                input_state = INPUT_KEY;
+            } else {
+                input_wait_ms -= elapsed_ms;
+            }
+        }
         dirty |= tetris_tick(&session, elapsed_ms);
     }
 }

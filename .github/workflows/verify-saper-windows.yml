@@ -21,14 +21,14 @@ jobs:
           name: firmware-menu
           repository: ${{ github.repository }}
           github-token: ${{ github.token }}
-          run-id: 44582751579
+          run-id: 44593690915
           path: verified-firmware
       - name: Test the distributed package and firmware
         shell: pwsh
         working-directory: verify/windows
         run: |
           Copy-Item ../../verified-firmware/build/games.elf .
-          if ((Get-FileHash games.elf).Hash -ne 'f6a42ad04114d40935ce2fe1213b1527ce3ea8ea3f30086fa0b2c873e0c2cd05') {
+          if ((Get-FileHash games.elf).Hash -ne '85f3a8ed5a5772b7b91dbdfcb1fa0ea78997134e8f0c2291c937b66093c9d4ba') {
             throw 'Wrong firmware'
           }
           $zip = 'renode-1.17.0.windows-portable.zip'
@@ -66,11 +66,12 @@ jobs:
           & $renode.FullName --disable-gui --hide-analyzers --plain check.resc
           if ($LASTEXITCODE -ne 0) { throw 'Windows Renode failed' }
           $uart = Get-Content -Raw -LiteralPath $uartPath
-          foreach ($marker in @('MCU Console Games', 'Choose difficulty', 'L1/3  Easy  Classic', 'Time 0s  Cell A1')) {
+          foreach ($marker in @('MCU Console Games', 'Choose difficulty', 'L1/3  Easy  Classic', 'Time 00:00', 'Mines left 7/7', 'Cell A1')) {
             if (-not $uart.Contains($marker)) { throw "Missing UART output: $marker" }
           }
           $esc = [char]27
-          if (-not $uart.Contains("$esc[97;44m[ ]")) { throw 'The first safe click did not draw' }
+          if (-not $uart.Contains("${esc}[48;2;255;119;191m[ ]")) { throw 'The first safe click did not draw' }
+          if (-not $uart.Contains("${esc}[48;2;106;48;94m")) { throw 'First reveal feedback missing' }
           if (($uart.Split('MCU Console Games', [StringSplitOptions]::None)).Count -lt 3) {
             throw 'Missing return to the main menu'
           }

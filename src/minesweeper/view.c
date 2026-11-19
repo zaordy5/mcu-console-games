@@ -1,3 +1,6 @@
+/** @file
+ *  ANSI rendering for Minesweeper screens.
+ */
 #include "view.h"
 
 /** Fixed layout for all three fields in a 64 by 20 terminal. */
@@ -55,8 +58,10 @@ static struct {
     bool logical;                   /**< Previously painted mode. */
 } painted;
 
-/** Styles active within one draw operation. */
-static Color foreground = NO_COLOR, background = NO_COLOR;
+/** Last ANSI foreground color written to the terminal. */
+static Color foreground = NO_COLOR;
+/** Last ANSI background color written to the terminal. */
+static Color background = NO_COLOR;
 
 /** Write an unsigned decimal value without a hosted C library. */
 static void write_number(uint32_t value)

@@ -1,3 +1,6 @@
+/** @file
+ *  Firmware initialization, input and timekeeping interface.
+ */
 #pragma once
 #include <stdint.h>
 /** Initialize USART2 and the millisecond tick at the reset HSI clock. */

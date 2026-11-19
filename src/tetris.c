@@ -84,8 +84,10 @@ static const Color piece_colors[TETRIS_SHAPES] = {
     ICE, LAVENDER, PEACH, CREAM, PINK, MINT, MELON
 };
 
-/** Color channels already set on the terminal. */
-static Color foreground = NO_COLOR, background = NO_COLOR;
+/** Last ANSI foreground color written to the terminal. */
+static Color foreground = NO_COLOR;
+/** Last ANSI background color written to the terminal. */
+static Color background = NO_COLOR;
 
 /** Display labels keyed by the portable starting difficulty. */
 static const char *const difficulty_labels[] = { "Easy", "Normal", "Hard" };

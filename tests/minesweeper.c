@@ -209,7 +209,7 @@ static void test_loss_and_replay(void)
     go_to(mine, &x, &y);
     minesweeper_game.key(' ');
     expect_frame("Mine hit!");
-    assert(strstr(frame, "[!]") && strstr(frame, "\033[91m X "));
+    assert(strstr(frame, "[!]") && strstr(frame, "\033[91;40m X "));
     assert(strstr(frame, "Layout 8/16/0/1013904242/0"));
     minesweeper_game.tick(2000);
     expect_frame("");
@@ -230,7 +230,7 @@ static void test_logic_session(void)
     for (unsigned attempt = 0; attempt < 128; ++attempt) {
         minesweeper_game.tick(1);
     }
-    expect_frame("\033[30;107m[ ]");
+    expect_frame("\033[97;44m[ ]");
     assert(!strstr(frame, "Layout search failed"));
 }
 
@@ -277,9 +277,9 @@ static void test_custom_session(void)
     expect_frame("Custom  Classic");
     assert(strstr(frame, "Mines 28  Left 28  Time 0s  Cell A1"));
     assert(strstr(frame, " K  L "));
-    assert(strstr(frame, "\033[30;107m[.]"));
+    assert(strstr(frame, "\033[97;44m[.]"));
     minesweeper_game.key('?');
-    expect_frame("\033[30;107m[?]");
+    expect_frame("\033[97;44m[?]");
     assert(strstr(frame, "Left 28"));
     minesweeper_game.key('f');
     expect_frame("[F]");
@@ -293,7 +293,7 @@ static void test_custom_session(void)
         minesweeper_game.tick(1);
     }
     expect_frame("Custom  Logic");
-    assert(strstr(frame, "\033[30;107m[ ]"));
+    assert(strstr(frame, "\033[97;44m[ ]"));
     minesweeper_game.key('q');
 }
 
@@ -311,11 +311,11 @@ static void test_shared_and_pause(void)
     send_text("l\033[200~8/16/0/1013904242/0\033[201~\r\n");
     expect_frame("Shared layout");
     assert(strstr(frame, "Mines 16  Left 16  Time 0s  Cell A1"));
-    assert(strstr(frame, "\033[94m 1 ") && strstr(frame, "\033[92m 2 "));
+    assert(strstr(frame, "\033[94;40m 1 ") && strstr(frame, "\033[92;40m 2 "));
 
     send_text("\033[1;2C");
     expect_frame("Cell B1");
-    assert(strstr(frame, "\033[30;107m[ ]"));
+    assert(strstr(frame, "\033[97;44m[ ]"));
     assert(!strstr(frame, " A  B  C "));  /* Moving only repaints the changed cells. */
     minesweeper_game.tick(1200);
     expect_frame("Time 1s  Cell B1");

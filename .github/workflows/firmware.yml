@@ -97,7 +97,7 @@ jobs:
           for frame, label in zip(frames, labels):
               assert label in frame and b"\x1b[0m" in frame, (label, frame[:300])
           easy, resume, hard, custom = (frames[i] for i in (5, 8, 11, 14))
-          selected = b"\x1b[30;107m"
+          selected = b"\x1b[97;44m"
           assert selected + b"[F]" in easy and selected + b"[?]" in easy
           assert b"Left 6" in easy and b"Left 7" in easy and b"Cell B1" in easy
           assert selected + b"[ ]" in easy, "The first open must be safe and blank"
@@ -111,13 +111,13 @@ jobs:
           print(f"Clock at the last game frame, pause and resume: "
                 f"{before_pause.decode()}, {stopped[1].decode()}, {restored[1].decode()} seconds")
           assert before_pause == stopped[1] == restored[1] == b"1"
-          assert b"\x1b[95m ? " not in resume, "The first open should clear the question mark"
+          assert b"\x1b[95;40m ? " not in resume, "The first open should clear the question mark"
           assert selected + b"[ ]" in hard
           assert b"Layout search failed" not in hard
           assert b"Enter mine count (1-135)" in custom and b"Mines 28  Left 28" in custom
           assert b" I  J  K  L " in custom
           assert b"Load layout" in custom and b"Mines 16  Left 16  Time 0s  Cell A1" in custom
-          assert b"\x1b[94m 1 " in custom and b"\x1b[92m 2 " in custom
+          assert b"\x1b[94;40m 1 " in custom and b"\x1b[92;40m 2 " in custom
           Path("minesweeper.uart").write_bytes(clear + custom)
           PY
           xvfb-run -a sh -ec 'xterm -T "Minesweeper UART" -geometry 64x20 -fa Monospace -fs 14 -e sh -c "cat minesweeper.uart; sleep 8" & sleep 2; import -window "Minesweeper UART" menu.png'

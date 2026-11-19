@@ -12,10 +12,10 @@ static uint8_t visible[MINES_MAX_CELLS];
 /** Width of the painted field, or zero when no field is visible. */
 static uint8_t painted_side;
 
-/** Separate bright ANSI colors for clues 1 through 8. */
+/** Distinct clue colors on the dark field. */
 static const char *const number_colors[] = {
-    "\033[94m", "\033[92m", "\033[91m", "\033[95m",
-    "\033[93m", "\033[96m", "\033[97m", "\033[90m"
+    "\033[94;40m", "\033[92;40m", "\033[91;40m", "\033[95;40m",
+    "\033[93;40m", "\033[96;40m", "\033[97;40m", "\033[90;40m"
 };
 
 /** Write an unsigned decimal value without a hosted C library. */
@@ -50,7 +50,7 @@ void mines_view_invalidate(void)
 static void page(const char *title)
 {
     mines_view_invalidate();
-    console_write("\033[H\033[J\033[36m");
+    console_write("\033[H\033[J\033[1m");
     console_write(title);
     console_write("\033[0m\r\n");
 }
@@ -58,7 +58,7 @@ static void page(const char *title)
 /** Show the mode, selected difficulty, and campaign level. */
 static void title(const MinesRun *run)
 {
-    console_write("\033[H\033[36mMinesweeper\033[0m  ");
+    console_write("\033[H\033[1mMinesweeper\033[0m  ");
     if (run->mode == MINES_CAMPAIGN) {
         console_write("L");
         write_number(run->level + 1);
@@ -125,19 +125,19 @@ static void paint_cell(uint8_t visible_cell)
 {
     bool selected = (visible_cell & SELECTED) != 0;
     char symbol = (char)(visible_cell & ~SELECTED);
-    const char *color = "\033[37m";
+    const char *color = "\033[37;40m";
     if (symbol == '!') {
         color = "\033[97;41m";
     } else if (selected) {
-        color = "\033[30;107m";
+        color = "\033[97;44m";
     } else if (symbol >= '1' && symbol <= '8') {
         color = number_colors[symbol - '1'];
     } else if (symbol == 'F') {
-        color = "\033[93m";
+        color = "\033[93;40m";
     } else if (symbol == '?') {
-        color = "\033[95m";
+        color = "\033[95;40m";
     } else if (symbol == 'X' || symbol == '*') {
-        color = "\033[91m";
+        color = "\033[91;40m";
     }
 
     char label[] = {selected ? '[' : ' ', symbol, selected ? ']' : ' ', '\0'};
@@ -149,8 +149,8 @@ static void paint_cell(uint8_t visible_cell)
 /** Write column letters aligned with their cells. */
 static void paint_columns(uint8_t side)
 {
-    move_to(COLUMN_ROW, FIELD_COLUMN);
-    console_write("\033[36m");
+    move_to(COLUMN_ROW, 1);
+    console_write("\033[96;40m   ");
     for (uint8_t x = 0; x < side; ++x) {
         char label[] = {' ', (char)('A' + x), ' ', '\0'};
         console_write(label);
@@ -170,6 +170,7 @@ static void paint_field(const MinesRun *run, MinesScreen screen, bool full)
         unsigned next_column = 0;
         if (full) {
             move_to(row, 1);
+            console_write("\033[96;40m");
             console_write(y < 9 ? " " : "");
             write_number(y + 1);
             console_write(" ");

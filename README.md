@@ -60,6 +60,7 @@ start
 
 - [GitHub Actions](https://github.com/zaordy5/mcu-console-games/actions/workflows/firmware.yml) публикует ELF, лог сборки, UART-журналы и отчёт Doxygen с SHA исходников.
 - В [матрице критериев](docs/CRITERIA_AUDIT.md) указаны способы проверки и доказательства. В [описи комплекта](docs/SUBMISSION.md) перечислены материалы по ревизиям. Независимые проверки описаны в [отчёте QA](docs/QA_REPORT.md).
+- [Видеозаписи проекта на Яндекс Диске](https://disk.yandex.ru/d/iZFVHk75zIZLpg)
 - [Сценарий записи](docs/VIDEO.md) описывает показ трёх игр и отладку GDB в Renode. Статус запуска на плате и аппаратной отладки ведётся в [задаче №4](https://github.com/zaordy5/mcu-console-games/issues/4).
 
 <details>

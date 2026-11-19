@@ -37,7 +37,7 @@ def send_keys(commands: list[str], keys: str, interval: str) -> None:
 def check_uart(data: bytes) -> None:
     """Check the ordered screens and key evidence from the game frames."""
     data = data.replace(b"\x1b[48;2;24;15;39m" + CLEAR, CLEAR)
-    screens = [frame for frame in data.split(CLEAR)[1:] if frame.replace(RESET, b"").strip()]
+    screens = [frame for frame in data.split(CLEAR)[1:] if re.sub(rb"\x1b\[[0-9;]*m", b"", frame).strip()]
     labels = (
         MENU, DIFFICULTY, MENU,
         DIFFICULTY, b"Difficulty: Easy", MENU,

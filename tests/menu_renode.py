@@ -44,8 +44,8 @@ def verify(trace, output):
             if game_frame:
                 raise ValueError("cancelling difficulty started a game")
             continue
-        if not game_frame.startswith(b"\x1b[0m"):
-            raise ValueError(f"{game!r}: expected ANSI reset before the game draws")
+        if not game_frame.startswith(b"\x1b[0m\x1b[2J\x1b[H"):
+            raise ValueError(f"{game!r}: expected an ANSI reset and full clear before the game draws")
         if title not in game_frame or state not in game_frame:
             raise ValueError(f"{game!r}: missing the real game screen or expected state")
     opened = [re.findall(rb"Opened ([1-9]\d*/\d+)", frames[i]) for i in (3, 5)]

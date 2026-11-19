@@ -135,7 +135,7 @@ int main(void)
             } else if (key >= '1' && key <= '3') {
                 active = games[pending];
                 pending = -1;
-                console_write(RESET);
+                console_write(RESET "\033[2J\033[H");
                 active->start((GameDifficulty)(key - '1'));
                 active->draw();
                 previous = platform_ms();

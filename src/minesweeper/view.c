@@ -53,7 +53,9 @@ static struct {
     unsigned seconds;                /**< Last clock value printed. */
     int left;                        /**< Last remaining-mine count printed. */
     unsigned opened;                 /**< Last progress count printed. */
-    unsigned clue, flags, targets;   /**< Last chord feedback contents. */
+    unsigned clue;                  /**< Last clue shown in chord feedback. */
+    unsigned flags;                 /**< Last adjacent flag count shown in chord feedback. */
+    unsigned targets;               /**< Last target count shown in chord feedback. */
     unsigned flash_ms;               /**< Reveal feedback time still visible. */
     bool logical;                   /**< Previously painted mode. */
 } painted;

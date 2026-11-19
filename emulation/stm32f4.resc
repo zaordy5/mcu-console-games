@@ -1,0 +1,15 @@
+# Default image from the Renode 1.17.0 STM32F4 Discovery test suite.
+# Set $bin to a local firmware ELF in the Monitor to use your own build.
+$bin?=@https://dl.antmicro.com/projects/renode/stm32f4_discovery--zephyr-hello_world.elf-s_515008-2180a4018e82fcbc8821ef4330c9b5f3caf2dcdb
+
+mach create "mcu-games"
+# The firmware reloads SysTick for the 16 MHz reset clock.
+machine LoadPlatformDescriptionFromString
+"""
+using "platforms/boards/stm32f4_discovery-kit.repl"
+
+nvic:
+    systickFrequency: 16000000
+"""
+sysbus LoadELF $bin
+showAnalyzer sysbus.usart2

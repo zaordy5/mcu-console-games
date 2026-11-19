@@ -4,6 +4,7 @@
 #include "tetris_core.h"
 
 #include <assert.h>
+#include <limits.h>
 #include <stdio.h>
 
 /** Three-cell bar oriented horizontally in the middle row. */
@@ -176,6 +177,22 @@ static void test_gravity(void)
     puts("PASS gravity: Easy 850 ms, Normal 600 ms, Hard 350 ms; Normal level 2: 530 ms");
 }
 
+/** Check out-of-range lookups and unknown starting difficulty. */
+static void test_api_boundaries(void)
+{
+    Tetris game;
+    tetris_reset(&game, (TetrisDifficulty)-1, 0);
+    assert(game.difficulty == TETRIS_NORMAL && game.until_drop == 600);
+    tetris_reset(&game, (TetrisDifficulty)100, 0);
+    assert(game.difficulty == TETRIS_NORMAL && game.until_drop == 600);
+    assert(tetris_cell(&game, INT_MIN, 0) == 0);
+    assert(tetris_cell(&game, 0, INT_MIN) == 0);
+    assert(tetris_cell(&game, TETRIS_WIDTH, 0) == 0);
+    assert(tetris_cell(&game, 0, TETRIS_HEIGHT) == 0);
+    assert(!tetris_move(&game, INT_MAX));
+    puts("PASS API boundaries: invalid difficulty, coordinates, and direction");
+}
+
 /** Run all portable game checks. */
 int main(void)
 {
@@ -184,5 +201,6 @@ int main(void)
     test_clear_rows();
     test_loss_and_restart();
     test_gravity();
+    test_api_boundaries();
     return 0;
 }

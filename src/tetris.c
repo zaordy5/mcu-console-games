@@ -19,8 +19,18 @@ static uint32_t shown_lines;
 static bool new_frame;
 /** A tick or key changed the visible game state. */
 static bool dirty;
-/** The game requested a return to the menu. */
-static bool exit_requested;
+/** A session has started and the player has not returned to the menu. */
+static bool session_active;
+
+/** Input parser state for escape sequences emitted by the terminal. */
+typedef enum {
+    INPUT_KEY,
+    INPUT_ESCAPE,
+    INPUT_SEQUENCE
+} InputState;
+
+/** Input parser state for the active session. */
+static InputState input_state;
 
 /** ANSI background colors keyed by the portable cell value. */
 static const char *const backgrounds[TETRIS_SHAPES + 1] = {
@@ -150,30 +160,63 @@ static void start_game(GameDifficulty difficulty)
     tetris_reset(&session, setting, 0);
     new_frame = true;
     dirty = true;
-    exit_requested = false;
+    session_active = true;
+    input_state = INPUT_KEY;
+}
+
+/** Filter ANSI control sequences so arrow and function keys cannot act as letters. */
+static char filter_key(char key)
+{
+    if (key == '\033') {
+        input_state = INPUT_ESCAPE;
+        return '\0';
+    }
+    if (input_state == INPUT_SEQUENCE) {
+        /* CSI parameters and intermediate bytes are in the same ASCII range. */
+        if (key < ' ' || key > '?') {
+            input_state = INPUT_KEY;
+        }
+        return '\0';
+    }
+    if (input_state == INPUT_ESCAPE) {
+        if (key == '[' || key == 'O') {
+            input_state = INPUT_SEQUENCE;
+            return '\0';
+        }
+        input_state = INPUT_KEY;
+    }
+    return key;
 }
 
 /** Process the current key, leaving the result screen on Q. */
 static void handle_key(char key)
 {
-    if (key == 'q' || key == 'Q') {
-        exit_requested = true;
+    if (!session_active) {
         return;
     }
-    if (session.lost || exit_requested) {
+    key = filter_key(key);
+    if (key == 'q' || key == 'Q') {
+        session_active = false;
+        return;
+    }
+    if (session.lost) {
         return;
     }
     switch (key) {
-    case 'a': case 'A':
+    case 'a':
+    case 'A':
         dirty |= tetris_move(&session, -1);
         break;
-    case 'd': case 'D':
+    case 'd':
+    case 'D':
         dirty |= tetris_move(&session, 1);
         break;
-    case 'w': case 'W':
+    case 'w':
+    case 'W':
         dirty |= tetris_rotate(&session);
         break;
-    case 's': case 'S':
+    case 's':
+    case 'S':
         dirty |= tetris_soft_drop(&session);
         break;
     default:
@@ -184,7 +227,7 @@ static void handle_key(char key)
 /** Advance the portable rules according to elapsed firmware time. */
 static void tick_game(uint32_t elapsed_ms)
 {
-    if (!exit_requested) {
+    if (session_active) {
         dirty |= tetris_tick(&session, elapsed_ms);
     }
 }
@@ -192,7 +235,7 @@ static void tick_game(uint32_t elapsed_ms)
 /** Flush pending frame changes and show the result until the player returns. */
 static void draw_game(void)
 {
-    if (!dirty || exit_requested) {
+    if (!session_active || !dirty) {
         return;
     }
     if (new_frame) {
@@ -211,10 +254,10 @@ static void draw_game(void)
     dirty = false;
 }
 
-/** Report a requested return to the firmware menu. */
+/** Report that the module is idle or the player returned to the menu. */
 static bool game_finished(void)
 {
-    return exit_requested;
+    return !session_active;
 }
 
 /** Menu entry for the firmware's falling-blocks game. */

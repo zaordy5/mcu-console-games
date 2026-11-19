@@ -11,22 +11,27 @@
 #define LEVEL_STEP_MS 70u
 /** Fastest permitted automatic drop interval. */
 #define MIN_INTERVAL_MS 100u
-
-/** Rotation-invariant square bitmap. */
+/** Score multiplier for the square of the number of rows cleared together. */
+#define LINE_SCORE 100u
+/** Square bitmap; turning this piece leaves its cells in place. */
 #define SQUARE_SHAPE 0x01bu
 
 /** Initial gravity in milliseconds, indexed by difficulty. */
-static const uint16_t initial_ms[] = { 850, 600, 350 };
+static const uint16_t initial_ms[] = {
+    [TETRIS_EASY] = 850,
+    [TETRIS_NORMAL] = 600,
+    [TETRIS_HARD] = 350
+};
 
 /** Spawn bitmaps in low-to-high row-major bit order. Each index has its own color. */
 static const uint16_t shapes[TETRIS_SHAPES] = {
-    0x038, /* Bar:    ... / ### / ... */
-    0x032, /* Corner: .#. / .## / ... */
-    0x03a, /* Tee:    .#. / ### / ... */
+    0x038,        /* Bar:    ... / ### / ... */
+    0x032,        /* Corner: .#. / .## / ... */
+    0x03a,        /* Tee:    .#. / ### / ... */
     SQUARE_SHAPE, /* Square: ##. / ##. / ... */
-    0x03d, /* Cup:    #.# / ### / ... */
-    0x133, /* Stair:  ##. / .## / ..# */
-    0x0ba, /* Cross:  .#. / ### / .#. */
+    0x03d,        /* Cup:    #.# / ### / ... */
+    0x133,        /* Stair:  ##. / .## / ..# */
+    0x0ba,        /* Cross:  .#. / ### / .#. */
 };
 
 /** Test the local cell at (x, y) in a shape bitmap. */
@@ -139,7 +144,7 @@ static void step_down(Tetris *game)
     }
     unsigned cleared = clear_lines(game);
     game->lines += cleared;
-    game->score += 100u * cleared * cleared;
+    game->score += LINE_SCORE * cleared * cleared;
     spawn(game);
 }
 
@@ -150,7 +155,8 @@ void tetris_reset(Tetris *game, TetrisDifficulty difficulty, uint32_t seed)
             game->board[y][x] = 0;
         }
     }
-    game->difficulty = difficulty;
+    game->difficulty = (unsigned)difficulty < sizeof initial_ms / sizeof initial_ms[0]
+        ? difficulty : TETRIS_NORMAL;
     game->score = 0;
     game->lines = 0;
     game->random = seed ? seed : 1u;
@@ -236,6 +242,10 @@ uint32_t tetris_interval(const Tetris *game)
 
 uint8_t tetris_cell(const Tetris *game, int x, int y)
 {
+    if (x < 0 || x >= TETRIS_WIDTH || y < 0 || y >= TETRIS_HEIGHT) {
+        return 0;
+    }
+
     int local_x = x - game->x;
     int local_y = y - game->y;
     if (!game->lost && local_x >= 0 && local_x < SHAPE_SIDE &&

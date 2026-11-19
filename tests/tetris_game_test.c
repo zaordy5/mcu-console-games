@@ -4,6 +4,7 @@
 #include "tetris.h"
 
 #include <assert.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -26,6 +27,47 @@ static void clear_output(void)
 {
     used = 0;
     output[0] = '\0';
+}
+
+/** Deliver a NUL-terminated sequence of terminal bytes to the game. */
+static void type_keys(const char *keys)
+{
+    while (*keys) {
+        tetris_game.key(*keys++);
+    }
+}
+
+/** Check that callbacks are safe while idle and that escape sequences are ignored. */
+static void test_input_boundaries(void)
+{
+    assert(tetris_game.finished());
+    tetris_game.tick(UINT32_MAX);
+    type_keys("ADWSQ");
+    tetris_game.draw();
+    assert(used == 0);
+
+    tetris_game.start(GAME_NORMAL);
+    tetris_game.draw();
+    clear_output();
+    type_keys("\033[A\033[D\033[1;5D\033OA\033OD\033[5~");
+    tetris_game.draw();
+    assert(used == 0 && !tetris_game.finished());
+    type_keys("\033Q");
+    assert(tetris_game.finished());
+    tetris_game.tick(UINT32_MAX);
+    tetris_game.draw();
+    assert(used == 0);
+
+    tetris_game.start(GAME_EASY);
+    type_keys("\033[");
+    tetris_game.start(GAME_EASY);
+    tetris_game.draw();
+    clear_output();
+    tetris_game.key('A');
+    tetris_game.draw();
+    assert(used != 0);
+    clear_output();
+    puts("PASS Game API: idle callbacks, escape sequences, and input reset");
 }
 
 /** Check each difficulty, the frame, key handling, and timed incremental output. */
@@ -116,10 +158,53 @@ static void test_result_and_restart(void)
     puts("PASS Game API: game over waits for Q and restart redraws the same clean frame");
 }
 
+/** Replay five line clears using only public Game callbacks. */
+static void test_level_replay(void)
+{
+    const struct {
+        const char *keys;
+        int drops;
+    } moves[] = {
+        {"aaaa", 17},     {"a", 17},      {"wwaaaa", 15},  {"dddddd", 17},
+        {"wwd", 16},      {"ddd", 16},    {"aa", 16},      {"wdddd", 16},
+        {"wwdddddd", 16}, {"dd", 17},     {"www", 16},     {"aaaa", 17},
+        {"ddd", 16},      {"waa", 16},    {"wwwaaa", 16},  {"wa", 16},
+        {"dddddd", 17}
+    };
+
+    clear_output();
+    tetris_game.start(GAME_NORMAL);
+    tetris_game.draw();
+    for (size_t piece = 0; piece < sizeof moves / sizeof moves[0]; ++piece) {
+        clear_output();
+        type_keys(moves[piece].keys);
+        for (int drop = 0; drop < moves[piece].drops; ++drop) {
+            tetris_game.key('s');
+        }
+        tetris_game.draw();
+        assert(!tetris_game.finished() && !strstr(output, "Game over."));
+        if (piece == 6) {
+            assert(strstr(output, "Score: 100 | Level: 1 | Lines: 1 | Drop: 600 ms"));
+        }
+    }
+    assert(strstr(output, "Score: 500 | Level: 2 | Lines: 5 | Drop: 530 ms"));
+    assert(!strstr(output, "\033[2J"));
+    clear_output();
+    tetris_game.tick(529);
+    tetris_game.draw();
+    assert(used == 0);
+    tetris_game.tick(1);
+    tetris_game.draw();
+    assert(used != 0);
+    puts("PASS Game API: five lines by key input, score 500, Normal level 2 at 530 ms");
+}
+
 /** Run all Game callback checks. */
 int main(void)
 {
+    test_input_boundaries();
     test_game_callbacks();
     test_result_and_restart();
+    test_level_replay();
     return 0;
 }

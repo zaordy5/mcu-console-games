@@ -39,7 +39,10 @@ typedef struct {
     bool lost;             /**< A new piece could not enter the board. */
 } Tetris;
 
-/** Clear a session and spawn the first piece. A zero seed uses the default sequence. */
+/**
+ * Clear a session and spawn the first piece.
+ * A zero seed uses the default sequence; an unknown difficulty uses Normal.
+ */
 void tetris_reset(Tetris *game, TetrisDifficulty difficulty, uint32_t seed);
 
 /** Move one column left (-1) or right (1) if the destination is free. */
@@ -60,7 +63,7 @@ uint32_t tetris_level(const Tetris *game);
 /** Return the current interval between automatic row steps in milliseconds. */
 uint32_t tetris_interval(const Tetris *game);
 
-/** Return the visible color at a valid board coordinate, including the active piece. */
+/** Return the visible color, including the active piece, or zero outside the board. */
 uint8_t tetris_cell(const Tetris *game, int x, int y);
 
 #endif

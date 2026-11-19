@@ -15,3 +15,5 @@ target_compile_options(games PRIVATE -mcpu=cortex-m4 -mthumb -ffreestanding -Wal
 target_link_options(games PRIVATE -mcpu=cortex-m4 -mthumb -nostdlib "-T${CMAKE_CURRENT_SOURCE_DIR}/src/stm32f407.ld")
 set_property(TARGET games APPEND PROPERTY LINK_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/stm32f407.ld")
 target_link_libraries(games PRIVATE gcc)
+
+target_sources(games PRIVATE src/tetris.c src/tetris_core.c src/pong.c src/pong_core.c)

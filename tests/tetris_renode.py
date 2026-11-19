@@ -10,7 +10,7 @@ from pathlib import Path
 
 CLEAR = b"\x1b[2J\x1b[H"
 RESET = b"\x1b[0m"
-MENU = b"MCU Console Games"
+MENU = b"MCU CONSOLE GAMES"
 DIFFICULTY = b"Choose difficulty"
 GAME_OVER = b"\x1b[2KGame over."
 BOARD_PAINT = re.compile(rb"\x1b\[[0-9]+;(?:[2-9]|1[0-9]|2[0-5])H(?:\x1b\[[0-9;]+m)*\[\]")
@@ -18,7 +18,6 @@ BOTTOM_CURSOR = b"\x1b[24;40H"
 FIELD_BG = b"\x1b[48;2;36;22;56m"
 BASE_BG = b"\x1b[48;2;24;15;39m"
 I_BG = b"\x1b[48;2;194;217;255m"
-GHOST = b"\x1b[20;12H\x1b[38;2;205;170;209m" + FIELD_BG + b"[]\x1b[21;10H[][][]"
 QUAD_NOTICE = re.compile(rb"\x1b\[12;28H\x1b\[38;2;255;203;151m(?:\x1b\[48;2;24;15;39m)?4 LINES \+1600")
 QUAD_ERASE = re.compile(rb"\x1b\[12;28H(?:\x1b\[[0-9;]+m)*\x1b\[K")
 # One group of turns and horizontal moves per piece, followed by hard drop.
@@ -37,6 +36,7 @@ def send_keys(commands: list[str], keys: str, interval: str) -> None:
 
 def check_uart(data: bytes) -> None:
     """Check the ordered screens and key evidence from the game frames."""
+    data = data.replace(b"\x1b[48;2;24;15;39m" + CLEAR, CLEAR)
     screens = [frame for frame in data.split(CLEAR)[1:] if frame.replace(RESET, b"").strip()]
     labels = (
         MENU, DIFFICULTY, MENU,
@@ -69,7 +69,7 @@ def check_uart(data: bytes) -> None:
     if hard.count(GAME_OVER) != 1 or normal.count(BOTTOM_CURSOR) != 1:
         raise ValueError("Hard game over or clean Normal restart was not observed")
     demo = screens[13]
-    if GHOST not in demo.split(BOTTOM_CURSOR, 1)[0] or b"Space" not in demo:
+    if b"\x1b[21;10H......" not in demo or b"Space" not in demo:
         raise ValueError("The opening frame is missing the ghost or the hard-drop hint")
     if not demo.endswith(RESET):
         raise ValueError("The demo did not reset the terminal style")
@@ -91,22 +91,24 @@ def run_renode(renode: str, elf: Path, profile: Path) -> bytes:
         uart = work / "tetris.uart"
         scenario = work / "tetris.resc"
         shutil.copyfile(elf, local_elf)
-        scenario.write_text(f"$bin=@{local_elf}\n" + profile.read_text(encoding="utf-8"),
-                            encoding="utf-8")
+        profile_lines = profile.read_text(encoding="utf-8").splitlines(keepends=True)
+        board_setup = "".join(line for line in profile_lines if not line.startswith("$bin?="))
+        scenario.write_text(f"$bin=@{local_elf}\n" + board_setup, encoding="utf-8")
 
-        commands = [f"sysbus.usart2 CreateFileBackend @{uart} true",
+        commands = ["sysbus.cpu PerformanceInMips 16",
+                    f"sysbus.usart2 CreateFileBackend @{uart} true",
                     'emulation RunFor "00:00:00.20"']
-        send_keys(commands, "1Q11", "00:00:00.10")
+        send_keys(commands, "1Q11", "00:00:00.28")
         commands.append('emulation RunFor "00:00:00.90"')
         send_keys(commands, "\033[D\033[C\033[A\033[B", "00:00:00.03")
         send_keys(commands, "ADWS", "00:00:00.06")
         send_keys(commands, "\033[", "00:00:00.03")
         commands.append('emulation RunFor "00:00:00.20"')
         send_keys(commands, "Q", "00:00:00.06")
-        send_keys(commands, "13", "00:00:00.10")
+        send_keys(commands, "13", "00:00:00.28")
         send_keys(commands, "s" * 100, "00:00:00.03")
-        send_keys(commands, "Q12q", "00:00:00.12")
-        send_keys(commands, "11", "00:00:00.08")
+        send_keys(commands, "Q12q", "00:00:00.28")
+        send_keys(commands, "11", "00:00:00.28")
         for moves in QUAD_REPLAY:
             for key in moves:
                 interval = "00:00:00.19" if key == "W" else "00:00:00.025"

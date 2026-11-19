@@ -9,7 +9,7 @@ from tempfile import TemporaryDirectory
 
 def verify(trace):
     """Require the input effects, match results and ANSI colors in the UART log."""
-    start = b"MCU Console Games"
+    start = b"MCU CONSOLE GAMES"
     choose = b"Choose difficulty"
     zero = b"0\x1b[38;2;255;238;250m : \x1b[38;2;217;190;255m0"
     events = (
@@ -24,8 +24,10 @@ def verify(trace):
         choose, zero, b"L1  Normal",
         b"CPU WINS!", b"Final \x1b[38;2;255;119;191m0\x1b[38;2;255;238;250m : \x1b[38;2;217;190;255m5", start,
     )
-    menu_reset = b"\x1b[0m\x1b[2J\x1b[H\x1b[36m" + start
-    if trace.count(menu_reset) != 3:
+    launcher = b"\x1b[0m\x1b[48;2;24;15;39m\x1b[2J\x1b[H"
+    exits = [frame for frame in trace.split(launcher)
+             if b"First to " in frame and b"PONG" in frame]
+    if len(exits) != 3 or any(not frame.endswith(b"\x1b[0m") for frame in exits):
         raise ValueError("expected a terminal reset on each of the three exits from Pong")
     position = 0
     for event in events:

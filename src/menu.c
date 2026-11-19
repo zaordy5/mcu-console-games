@@ -1,91 +1,149 @@
+/** @file menu.c
+ *  Retrowave launcher and shared USART2 game dispatch.
+ */
 #include "game.h"
 #include "minesweeper.h"
 #include "platform.h"
+#include "pong.h"
+#include "tetris.h"
 
-/** Placeholder state shared by the three previews until game modules arrive. */
-static bool done;
-/** Reset the preview session. */
-static void preview_start(GameDifficulty difficulty) { (void)difficulty; done = false; }
-/** Leave the preview on q. */
-static void preview_key(char input) { done = (input == 'q'); }
-/** Advance an inert preview by the supplied interval. */
-static void preview_tick(uint32_t elapsed_ms) { (void)elapsed_ms; }
-/** The preview screen is static after selection. */
-static void preview_draw(void) { }
-/** Report a requested return to the menu. */
-static bool preview_finished(void) { return done; }
-/** Temporary descriptor for Tetris until its module is available. */
-static const Game tetris_preview = {
-    "Tetris", preview_start, preview_key, preview_tick, preview_draw, preview_finished
-};
-/** Temporary descriptor for Pong until its module is available. */
-static const Game pong_preview = {
-    "Pong", preview_start, preview_key, preview_tick, preview_draw, preview_finished
-};
-/** Entries in display order. */
-static const Game *const games[] = {&tetris_preview, &minesweeper_game, &pong_preview};
+/** Clear all terminal attributes before switching screens. */
+#define RESET "\033[0m"
+/** Background for the full launcher. */
+#define BASE "\033[48;2;24;15;39m"
+/** Background for game and difficulty cards. */
+#define PANEL "\033[48;2;36;22;56m"
+/** Color for the launcher title. */
+#define PINK "\033[38;2;255;133;199m"
+/** Color for labels and descriptions. */
+#define INK "\033[38;2;255;238;250m"
+/** Color for key numbers and footer instructions. */
+#define PEACH "\033[38;2;255;203;151m"
 
-/** Clear the screen, return the cursor home and display all registered games. */
-static void menu(void)
+/** Games in menu order, addressed by the keys 1–3. */
+static const Game *const games[] = {&tetris_game, &minesweeper_game, &pong_game};
+
+/** The rule affected by difficulty in each game. */
+static const char *const difficulty_rules[] = {
+    "Difficulty changes the fall speed.",
+    "Difficulty changes the mine density.",
+    "Difficulty changes the opponent's reaction time.",
+};
+
+/** Labels for the three GameDifficulty values. */
+static const char *const difficulties[] = {"Easy", "Normal", "Hard"};
+
+/** Three-row ASCII key glyphs for the numbered cards. */
+static const char *const key_glyphs[][3] = {
+    {" /| ", "  | ", " _|_"},
+    {" == ", "  / ", " /__"},
+    {" == ", "  _)", " __)"},
+};
+
+/** Position the cursor in the 80 x 24 launcher viewport. */
+static void move_to(unsigned row, unsigned column)
 {
-    console_write("\033[2J\033[H\033[36mMCU Console Games\033[0m\r\n");
-    for (unsigned i = 0; i < sizeof games / sizeof games[0]; ++i) {
-        char number[] = {(char)('1' + i), '.', ' ', 0};
-        console_write(number);
-        console_write(games[i]->name);
-        console_write("\r\n");
+    char position[] = {
+        '\033', '[', (char)('0' + row / 10), (char)('0' + row % 10),
+        ';', (char)('0' + column / 10), (char)('0' + column % 10), 'H', '\0'
+    };
+    console_write(position);
+}
+
+/** Draw the common title and the three sections of the sunset line. */
+static void header(const char *subtitle)
+{
+    console_write(RESET BASE "\033[2J\033[H");
+    move_to(2, 15);
+    console_write(PINK "MCU CONSOLE GAMES");
+    move_to(3, 15);
+    console_write("\033[48;2;112;63;162m                  "
+                  "\033[48;2;220;84;155m                 "
+                  "\033[48;2;255;172;123m                 " BASE);
+    move_to(5, 15);
+    console_write(INK);
+    console_write(subtitle);
+}
+
+/** Paint a card with a large key glyph and a single readable label. */
+static void card(unsigned top, unsigned key, const char *label)
+{
+    for (unsigned line = 0; line < 3; ++line) {
+        move_to(top + line, 15);
+        console_write(PANEL "                                                    ");
+        move_to(top + line, 18);
+        console_write(PEACH);
+        console_write(key_glyphs[key][line]);
     }
+    move_to(top + 1, 26);
+    console_write(INK);
+    console_write(label);
 }
 
-/** Choose starting parameters for any game before opening its screen. */
-static void show_difficulty(const Game *game)
+/** Display the main menu. Every return uses the same bytes as startup. */
+static void show_menu(void)
 {
-    console_write("\033[2J\033[H\033[36m");
-    console_write(game->name);
-    console_write("\033[0m\r\nChoose difficulty\r\n1. Easy\r\n2. Normal\r\n3. Hard\r\nQ - menu\r\n");
+    header("Choose a game");
+    for (unsigned i = 0; i < sizeof games / sizeof games[0]; ++i) {
+        card(8 + 4 * i, i, games[i]->name);
+    }
+    move_to(21, 15);
+    console_write(BASE PEACH "1-3 Select game" RESET);
 }
 
-/** Dispatch input and elapsed time to the selected module. */
+/** Show the difficulty choices and their effect for the selected game. */
+static void show_difficulty(unsigned game)
+{
+    header("Choose difficulty");
+    move_to(6, 15);
+    console_write(PINK);
+    console_write(games[game]->name);
+    for (unsigned i = 0; i < sizeof difficulties / sizeof difficulties[0]; ++i) {
+        card(8 + 4 * i, i, difficulties[i]);
+    }
+    move_to(20, 15);
+    console_write(BASE INK);
+    console_write(difficulty_rules[game]);
+    move_to(22, 15);
+    console_write(PEACH "1-3 Start   |   Q Back" RESET);
+}
+
+/** Dispatch nonblocking input and elapsed time to the active game. */
 int main(void)
 {
     platform_init();
     const Game *active = 0;
-    const Game *pending = 0;
+    int pending = -1;
     uint32_t previous = platform_ms();
-    menu();
+    show_menu();
     for (;;) {
         int key = console_read();
         uint32_t now = platform_ms();
-        if (!active && !pending) {
-            if (key >= '1' && key <= '3') {
-                pending = games[key - '1'];
-                show_difficulty(pending);
-            }
-        } else if (pending) {
-            if (key == 'q' || key == 'Q') {
-                pending = 0;
-                menu();
-            } else if (key >= '1' && key <= '3') {
-                active = pending;
-                pending = 0;
-                active->start((GameDifficulty)(key - '1'));
-                console_write("\033[2J\033[H");
-                if (active->start == preview_start) {
-                    console_write("\033[33m");
-                    console_write(active->name);
-                    console_write(" preview\033[0m\r\nq - menu\r\n");
-                }
-                active->draw();
-            }
-        } else {
+        if (active) {
             if (key >= 0) active->key((char)key);
             if (now != previous) active->tick(now - previous);
             if (active->finished()) {
                 active = 0;
-                menu();
+                show_menu();
             } else if (key >= 0 || now != previous) {
                 active->draw();
             }
+        } else if (pending >= 0) {
+            if (key == 'q' || key == 'Q') {
+                pending = -1;
+                show_menu();
+            } else if (key >= '1' && key <= '3') {
+                active = games[pending];
+                pending = -1;
+                console_write(RESET);
+                active->start((GameDifficulty)(key - '1'));
+                active->draw();
+                previous = platform_ms();
+                continue;
+            }
+        } else if (key >= '1' && key <= '3') {
+            pending = key - '1';
+            show_difficulty((unsigned)pending);
         }
         previous = now;
     }

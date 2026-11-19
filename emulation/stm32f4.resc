@@ -11,5 +11,7 @@ using "platforms/boards/stm32f4_discovery-kit.repl"
 nvic:
     systickFrequency: 16000000
 """
+# Use the same emulated CPU budget for interactive play and automated tests.
+sysbus.cpu PerformanceInMips 16
 sysbus LoadELF $bin
 showAnalyzer sysbus.usart2

@@ -37,7 +37,6 @@ def main():
         result = subprocess.run(
             [args.renode, "--console", "--disable-gui", "--hide-analyzers", "--plain",
              "-e", f"include {monitor_path(script)}",
-             "-e", "sysbus.cpu PerformanceInMips 16",
              "-e", 'emulation RunFor "00:00:00.10"', "-e", read,
              "-e", 'emulation RunFor "00:00:01.00"', "-e", read, "-e", "quit"],
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=60,

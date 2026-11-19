@@ -98,8 +98,7 @@ def run_renode(renode: str, elf: Path, profile: Path) -> bytes:
         board_setup = "".join(line for line in profile_lines if not line.startswith("$bin?="))
         scenario.write_text(f"$bin={monitor_path(local_elf)}\n" + board_setup, encoding="utf-8")
 
-        commands = ["sysbus.cpu PerformanceInMips 16",
-                    f"sysbus.usart2 CreateFileBackend {monitor_path(uart)} true",
+        commands = [f"sysbus.usart2 CreateFileBackend {monitor_path(uart)} true",
                     'emulation RunFor "00:00:00.20"']
         send_keys(commands, "1Q11", "00:00:00.28")
         commands.append('emulation RunFor "00:00:00.90"')

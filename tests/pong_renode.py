@@ -77,7 +77,6 @@ def main():
         command = [
             args.renode, "--disable-gui", "--hide-analyzers", "--plain",
             "--port", "-1", "-e", f"include {monitor_path(script)}",
-            "-e", "sysbus.cpu PerformanceInMips 16",
             "-e", f"sysbus.usart2 CreateFileBackend {monitor_path(trace)} true",
             "-e", 'emulation RunFor "00:00:00.15"',
         ]

@@ -7,6 +7,8 @@ import shutil
 import subprocess
 from tempfile import TemporaryDirectory
 
+from renode_paths import monitor_path
+
 
 def main():
     """Run the firmware and compare two reads of its SysTick counter."""
@@ -31,9 +33,10 @@ def main():
         profile = args.profile.read_text(encoding="utf-8").splitlines(keepends=True)
         setup = "".join(line for line in profile if not line.startswith("$bin?="))
         script = work / "clock.resc"
-        script.write_text(f"$bin=@{elf}\n" + setup, encoding="utf-8")
+        script.write_text(f"$bin={monitor_path(elf)}\n" + setup, encoding="utf-8")
         result = subprocess.run(
-            [args.renode, "--console", "--disable-gui", "--hide-analyzers", "--plain", str(script),
+            [args.renode, "--console", "--disable-gui", "--hide-analyzers", "--plain",
+             "-e", f"include {monitor_path(script)}",
              "-e", "sysbus.cpu PerformanceInMips 16",
              "-e", 'emulation RunFor "00:00:00.10"', "-e", read,
              "-e", 'emulation RunFor "00:00:01.00"', "-e", read, "-e", "quit"],

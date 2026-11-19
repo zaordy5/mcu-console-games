@@ -1,6 +1,12 @@
 cmake_minimum_required(VERSION 3.16)
 project(mcu_console_games LANGUAGES C ASM)
-add_executable(games src/startup.S src/platform.c src/menu.c)
+add_executable(games
+    src/startup.S
+    src/platform.c
+    src/menu.c
+    src/minesweeper/board.c
+    src/minesweeper/game.c
+)
 set_target_properties(games PROPERTIES SUFFIX ".elf" C_STANDARD 11)
 target_include_directories(games PRIVATE include)
 target_compile_options(games PRIVATE -mcpu=cortex-m4 -mthumb -ffreestanding -Wall -Wextra -Og -g3)

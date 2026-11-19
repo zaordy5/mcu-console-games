@@ -29,28 +29,42 @@ jobs:
           sudo apt-get install -y --no-install-recommends gcc-arm-none-eabi libnewlib-dev xterm xvfb imagemagick xauth
           cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE=cmake/arm-gcc.cmake
           cmake --build build --verbose
+      - name: Test Minesweeper rules on the host
+        run: |
+          gcc -std=c11 -Wall -Wextra -Werror -Iinclude -Isrc/minesweeper \
+            tests/minesweeper.c src/minesweeper/board.c src/minesweeper/game.c -o build/minesweeper-check
+          ./build/minesweeper-check
       - name: Test menu input on Renode
         run: |
           { echo "\$bin=@$PWD/build/games.elf"; tail -n +4 emulation/stm32f4.resc; } > "$RUNNER_TEMP/menu.resc"
           args=()
-          for key in 49 50 51; do
-            for byte in "$key" 113; do
-              args+=(-e "sysbus.usart2 WriteChar $byte" -e 'emulation RunFor "00:00:00.03"')
-            done
+          # 1/normal/quit, 2/easy/move/flag/move/open/quit, 2/hard/quit, 3/normal/quit.
+          for byte in 49 50 113 50 49 100 102 97 32 113 50 51 113 51 50 113; do
+            args+=(-e "sysbus.usart2 WriteChar $byte" -e 'emulation RunFor "00:00:00.30"')
           done
           timeout 90s "$RUNNER_TEMP/renode/renode" --disable-gui --hide-analyzers --plain "$RUNNER_TEMP/menu.resc" \
-            -e "sysbus.usart2 CreateFileBackend @$PWD/menu.uart true" -e 'emulation RunFor "00:00:00.1"' "${args[@]}" -e quit
+            -e "sysbus.usart2 CreateFileBackend @$PWD/menu.uart true" -e 'emulation RunFor "00:00:00.3"' "${args[@]}" -e quit
           python3 - <<'PY'
           from pathlib import Path
           raw = Path("menu.uart").read_bytes()
-          frames = raw.split(b"\x1b[2J\x1b[H")[1:]
-          labels = [b"MCU Console Games", b"Tetris preview", b"MCU Console Games", b"Minesweeper preview",
-                    b"MCU Console Games", b"Pong preview", b"MCU Console Games"]
+          clear = b"\x1b[2J\x1b[H"
+          frames = raw.split(clear)[1:]
+          labels = [
+              b"MCU Console Games", b"Choose difficulty", b"Tetris preview", b"MCU Console Games",
+              b"Choose difficulty", b"Level 1/3  Easy  Mines 7", b"MCU Console Games",
+              b"Choose difficulty", b"Level 1/3  Hard  Mines 16", b"MCU Console Games",
+              b"Choose difficulty", b"Pong preview", b"MCU Console Games",
+          ]
           assert len(frames) == len(labels), raw
           for frame, label in zip(frames, labels):
               assert label in frame and b"\x1b[0m" in frame, frame
+          easy = frames[5]
+          assert b"\x1b[36m[" in easy, "Opened cell was not displayed"
+          assert b"\x1b[33m[F]" in easy, "Cursor movement or flag failed"
+          assert b"Mine hit!" not in easy, "First move was not safe"
+          Path("minesweeper.uart").write_bytes(clear + easy)
           PY
-          xvfb-run -a sh -ec 'xterm -geometry 50x12+0+0 -fa Monospace -fs 14 -e sh -c "cat menu.uart; sleep 8" & sleep 2; import -window root -crop 510x255+0+0 menu.png'
+          xvfb-run -a sh -ec 'xterm -geometry 64x17+0+0 -fa Monospace -fs 14 -e sh -c "cat minesweeper.uart; sleep 8" & sleep 2; import -window root -crop 680x365+0+0 menu.png'
       - uses: actions/upload-artifact@v4
         with:
           name: firmware-menu

@@ -16,6 +16,22 @@ function Find-Renode([string]$Folder) {
     }
 }
 
+function Join-ArchiveParts([string]$Archive, [string[]]$Parts) {
+    $output = [IO.File]::Create($Archive)
+    try {
+        foreach ($part in $Parts) {
+            $inputStream = [IO.File]::OpenRead($part)
+            try {
+                $inputStream.CopyTo($output)
+            } finally {
+                $inputStream.Dispose()
+            }
+        }
+    } finally {
+        $output.Dispose()
+    }
+}
+
 try {
     $renode = Find-Renode $installed
     if (-not $renode) {
@@ -26,10 +42,17 @@ try {
         try {
             $archive = Join-Path $PSScriptRoot $package
             if (-not (Test-Path -LiteralPath $archive -PathType Leaf)) {
+                $parts = @("$archive.001", "$archive.002")
                 $archive = Join-Path $work $package
-                Write-Host "Downloading Renode $version from GitHub..."
-                [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-                Invoke-WebRequest -UseBasicParsing -Uri $download -OutFile $archive
+                if ((Test-Path -LiteralPath $parts[0] -PathType Leaf) -and
+                    (Test-Path -LiteralPath $parts[1] -PathType Leaf)) {
+                    Write-Host "Joining the two local Renode archive parts..."
+                    Join-ArchiveParts $archive $parts
+                } else {
+                    Write-Host "Downloading Renode $version from GitHub..."
+                    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+                    Invoke-WebRequest -UseBasicParsing -Uri $download -OutFile $archive
+                }
             }
             Write-Host "Checking and unpacking Renode $version..."
             if ((Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash -ne $expectedHash) {

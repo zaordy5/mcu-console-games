@@ -34,6 +34,15 @@ jobs:
           $zip = 'renode-1.17.0.windows-portable.zip'
           curl.exe --fail --silent --show-error --location --retry 2 -o $zip "https://github.com/renode/renode/releases/download/v1.17.0/$zip"
           if ($LASTEXITCODE -ne 0) { throw 'Portable Renode download failed' }
+          $inputFile = [IO.File]::OpenRead((Resolve-Path $zip).Path)
+          try {
+            $first = [byte[]]::new(64MB)
+            $inputFile.ReadExactly($first, 0, $first.Length)
+            [IO.File]::WriteAllBytes((Join-Path $PWD "$zip.001"), $first)
+            $second = [IO.File]::Create((Join-Path $PWD "$zip.002"))
+            try { $inputFile.CopyTo($second) } finally { $second.Dispose() }
+          } finally { $inputFile.Dispose() }
+          Remove-Item -LiteralPath $zip
           & powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Start-Saper.ps1 -PrepareOnly
           if ($LASTEXITCODE -ne 0) { throw 'Launcher could not unpack Renode' }
           $renode = Get-ChildItem (Join-Path $env:LOCALAPPDATA 'SaperRenode\1.17.0') -Recurse -File -Filter 'renode.exe' |
@@ -69,8 +78,6 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: portable-renode-windows
-          path: |
-            verify/windows/renode-1.17.0.windows-portable.zip
-            verify/windows/saper-windows.uart
+          name: saper-windows-uart
+          path: verify/windows/saper-windows.uart
           compression-level: 0

@@ -109,11 +109,12 @@ static void test_match(void)
     place_ball(&pong, 15, 7, 1, 1);
     pong.ball_wait_ms = second;
     pong_tick(&pong, first - 1);
-    assert(second < first && pong.ball_x == 16);
+    assert(first == 135 && second == 126 && pong.ball_x == 16);
     printf("Ball moves one cell every %u ms at level 1, %u ms at level 2\n",
            (unsigned)first, (unsigned)second);
 
     pong.level = PONG_MAX_LEVEL;
+    assert(pong_ball_interval(&pong) == 54);
     pong.phase = PONG_WON;
     assert(!pong_next_level(&pong));
     pong_start(&pong, PONG_EASY);
@@ -127,9 +128,9 @@ static unsigned first_cpu_move(PongDifficulty difficulty)
     pong_start(&pong, difficulty);
     pong_tick(&pong, PONG_SERVE_MS);
     pong.ball_y = 0;
-    pong.ball_wait_ms = 500;
+    pong.ball_wait_ms = 750;
     int start_y = pong.cpu_y;
-    for (unsigned ms = 1; ms <= 500; ++ms) {
+    for (unsigned ms = 1; ms <= 750; ++ms) {
         pong_tick(&pong, 1);
         if (pong.cpu_y != start_y) {
             return ms;
@@ -165,7 +166,7 @@ int main(void)
     unsigned easy = first_cpu_move(PONG_EASY);
     unsigned normal = first_cpu_move(PONG_NORMAL);
     unsigned hard = first_cpu_move(PONG_HARD);
-    assert(easy == 400 && normal == 240 && hard == 175);
+    assert(easy == 600 && normal == 360 && hard == 263);
     printf("First CPU move: Easy %u ms, Normal %u ms, Hard %u ms\n", easy, normal, hard);
     puts("Pong core checks passed");
 }

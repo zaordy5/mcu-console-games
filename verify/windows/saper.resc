@@ -1,0 +1,18 @@
+mach create "Saper"
+
+machine LoadPlatformDescriptionFromString
+"""
+using "platforms/boards/stm32f4_discovery-kit.repl"
+
+nvic:
+    systickFrequency: 16000000
+
+sysbus:
+    init:
+        Tag <0x40021000, 0x40021003> "GPIOE_MODER" 0xFFFFFFFF
+        Tag <0x40021004, 0x40021007> "GPIOE_OTYPER" 0x00000008
+        Tag <0x50000010, 0x5000003f> "USB:RESET" 0x80000000
+"""
+
+sysbus LoadELF @games.elf
+showAnalyzer sysbus.usart2

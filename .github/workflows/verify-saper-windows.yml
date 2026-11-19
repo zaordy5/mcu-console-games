@@ -1,0 +1,73 @@
+name: Verify Saper on Windows
+
+on:
+  pull_request:
+    branches: [feat/2-minesweeper]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  launch:
+    runs-on: windows-2022
+    timeout-minutes: 9
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: firmware-menu
+          repository: ${{ github.repository }}
+          github-token: ${{ github.token }}
+          run-id: 44582751579
+          path: verified-firmware
+      - name: Test the distributed package and firmware
+        shell: pwsh
+        working-directory: verify/windows
+        run: |
+          Copy-Item ../../verified-firmware/build/games.elf .
+          if ((Get-FileHash games.elf).Hash -ne 'f6a42ad04114d40935ce2fe1213b1527ce3ea8ea3f30086fa0b2c873e0c2cd05') {
+            throw 'Wrong firmware'
+          }
+          $zip = 'renode-1.17.0.windows-portable.zip'
+          curl.exe --fail --silent --show-error --location --retry 2 -o $zip "https://github.com/renode/renode/releases/download/v1.17.0/$zip"
+          if ($LASTEXITCODE -ne 0) { throw 'Portable Renode download failed' }
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Start-Saper.ps1 -PrepareOnly
+          if ($LASTEXITCODE -ne 0) { throw 'Launcher could not unpack Renode' }
+          $renode = Get-ChildItem (Join-Path $env:LOCALAPPDATA 'SaperRenode\1.17.0') -Recurse -File -Filter 'renode.exe' |
+            Select-Object -First 1
+          $extra = @'
+          sysbus.usart2 CreateFileBackend @saper-windows.uart true
+          emulation RunFor "00:00:00.25"
+          sysbus.usart2 WriteChar 50
+          emulation RunFor "00:00:00.25"
+          sysbus.usart2 WriteChar 49
+          emulation RunFor "00:00:00.25"
+          sysbus.usart2 WriteChar 32
+          emulation RunFor "00:00:00.25"
+          sysbus.usart2 WriteChar 113
+          emulation RunFor "00:00:00.25"
+          quit
+          '@
+          [IO.File]::WriteAllText((Join-Path $PWD 'check.resc'), (Get-Content saper.resc -Raw) + $extra + "`n")
+          & $renode.FullName --disable-gui --hide-analyzers --plain check.resc
+          if ($LASTEXITCODE -ne 0) { throw 'Windows Renode failed' }
+          $uart = Get-Content -Raw saper-windows.uart
+          foreach ($marker in @('MCU Console Games', 'Choose difficulty', 'L1/3  Easy  Classic', 'Time 0s  Cell A1')) {
+            if (-not $uart.Contains($marker)) { throw "Missing UART output: $marker" }
+          }
+          $esc = [char]27
+          if (-not $uart.Contains("$esc[97;44m[ ]")) { throw 'The first safe click did not draw' }
+          if (($uart.Split('MCU Console Games', [StringSplitOptions]::None)).Count -lt 3) {
+            throw 'Missing return to the main menu'
+          }
+          Write-Host 'Windows Renode booted the ELF and passed keyboard/ANSI checks.'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: portable-renode-windows
+          path: |
+            verify/windows/renode-1.17.0.windows-portable.zip
+            verify/windows/saper-windows.uart
+          compression-level: 0

@@ -1,39 +1,38 @@
-# Консольные игры для микроконтроллера
+# MCU Console Games
 
-Командный проект для трека 3 конкурса. Цель проекта — собрать тетрис, сапёр и одиночный пинг-понг в одной прошивке с общим меню, цветным терминалом, уровнями и выбором сложности.
+`C / STM32F407 / Renode / Arm GCC / CMake / Doxygen`
 
-**Начать работу** · [Пошаговый план от первой прошивки до сдачи](docs/ROADMAP.md). В плане указаны порядок этапов для четырёх участников, критерии приёмки и шаблон отчёта для каждого ИИ.
+Three terminal games running from a single bare-metal STM32F407 firmware image. The shared launcher and games use a pink retrowave palette over USART2.
 
-## Эмулятор для разработки
+![Pong running over USART2 in Renode](https://github.com/zaordy5/mcu-console-games/blob/2548bce57125fbf71523984c75d57144728bbbcf/pong-retrowave.png?raw=true)
 
-Для команды выбран **Renode 1.17.0**. Профиль [emulation/stm32f4.resc](emulation/stm32f4.resc) загружает ARM ELF в модель **STM32F4 Discovery** и открывает терминал **USART2**. Модель SysTick настроена на 16 МГц, чтобы миллисекунды в играх соответствовали частоте прошивки после сброса. Здесь можно проверять меню, ввод с клавиатуры, цвет и перемещение курсора, а через GDB — останавливать игру в нужном месте. Сейчас команда работает в симуляторе. Вопрос конкурсного подтверждения запуска и отладки на оборудовании ведём в [задаче № 4](https://github.com/zaordy5/mcu-console-games/issues/4).
+<details>
+<summary><strong>Русская версия</strong></summary>
 
-### Первый запуск без игровой прошивки
+## Проект
 
-1. Скачай [Renode 1.17.0](https://github.com/renode/renode/releases/tag/v1.17.0). Для Windows подойдёт `renode-1.17.0.setup.exe`. При установке добавь Renode в PATH и открой новое окно PowerShell. Для Ubuntu/Debian на x86-64 скачай `renode_1.17.0_amd64.deb` и из каталога загрузки выполни `sudo apt install ./renode_1.17.0_amd64.deb`.
-2. Открой терминал в корне копии репозитория на ветке `develop`. Нужны графический рабочий стол для окна UART и интернет при первой загрузке демонстрационного ELF. Для этого примера достаточно Renode.
-3. Введи команду в терминале ОС.
+Тетрис, Сапёр и одиночный Пинг-понг собраны в одну прошивку `games.elf` для STM32F407. Проект разработан командой для трека «Программирование микроконтроллеров». Интеграционная сборка проверена на модели STM32F4 Discovery в Renode 1.17.0.
 
-   ```sh
-   renode emulation/stm32f4.resc
-   ```
+| Игра | Возможности |
+|---|---|
+| **1 · [Тетрис](docs/TETRIS.md)** | Семь фигур, предпросмотр, тень приземления, уровни скорости и подсчёт очков. |
+| **2 · [Сапёр](docs/minesweeper.md)** | Безопасный первый ход, флажки, уровни кампании, выбор размера поля и продолжение партии. |
+| **3 · [Пинг-понг](docs/PONG.md)** | Матч до пяти очков против компьютера, три сложности и переход на следующий уровень после победы. |
 
-4. В появившемся окне **Renode Monitor** введи `start`. В отдельном окне **USART2** должна появиться строка `Hello World! stm32f4_disco`. Это готовая прошивка из [тестов Renode](https://github.com/renode/renode/blob/v1.17.0/tests/platforms/STM32F4_Discovery.robot). Она проверяет загрузку ELF и вывод по UART. Для выхода введи `quit` в Monitor.
+В главном меню нажмите номер игры, затем `1`, `2` или `3` для выбора сложности. Клавиши вводятся в окне USART2 без Enter. `Q` возвращает в меню. Для общего экрана подходит терминал от 80 × 24 символов с ANSI RGB.
 
-### Запуск своих игр
+## Сборка и запуск
 
-Установи CMake 3.16 или новее, генератор сборки (например Ninja) и Arm GNU Toolchain с `arm-none-eabi-gcc` в PATH. Из корня проекта собери прошивку (для варианта ниже нужен Ninja).
+Для сборки нужны CMake 3.16+, генератор Ninja и `arm-none-eabi-gcc` из Arm GNU Toolchain. Для запуска используйте Renode 1.17.0.
 
 ```sh
+git clone https://github.com/zaordy5/mcu-console-games.git
+cd mcu-console-games
 cmake -S . -B build -G Ninja -DCMAKE_TOOLCHAIN_FILE=cmake/arm-gcc.cmake
 cmake --build build
 ```
 
-Файл `build/games.elf` содержит отладочные символы. После запуска нажми `2`, чтобы открыть сапёр, затем `1`, `2` или `3` для выбора сложности. В игре нажми `P` для паузы или `Q` для возврата в меню. До первого открытия можно нажать `C` для своего поля, `L` для загрузки раскладки и `U` для продолжения сохранённой партии. Пункты тетриса и пинг-понга открывают тестовые экраны. [Правила и управление сапёром](docs/minesweeper.md)
-
-Авторы игр используют [include/game.h](include/game.h). Каждый модуль предоставляет старт с выбранной сложностью, обработку клавиши, шаг по времени в миллисекундах, отрисовку и признак завершения.
-
-Открой новую сессию командой `renode`. В Monitor укажи полный путь к своему ELF **до** подключения сценария. Пример для Windows ниже. Замени оба пути на свои. В Linux используй абсолютные пути вида `@/home/user/...`.
+Запустите `renode`. В Renode Monitor укажите абсолютные пути к ELF и профилю, затем введите `start`.
 
 ```text
 set bin @C:/work/mcu-console-games/build/games.elf
@@ -41,56 +40,46 @@ include @C:/work/mcu-console-games/emulation/stm32f4.resc
 start
 ```
 
-Клавиши игры вводи в окне USART2. Проверь, что одиночное нажатие сразу двигает ракетку, фигуру или курсор, при перерисовке сохраняются цвета и после партии снова открывается меню. Если видишь `Hello World!`, загружен демонстрационный ELF. Если окно пустое, проверь команду `start` и какой UART инициализирует прошивка.
+Готовый ELF можно скачать вместе с `games.resc` и журналами в [артефакте проверенной сборки](https://github.com/zaordy5/mcu-console-games/actions/runs/44611936913/artifacts/14572957152). Распакуйте архив и подключите `games.resc` по абсолютному пути в Renode Monitor.
 
-### Пошаговая отладка
+## Проверки и документация
 
-Загрузи свой ELF по инструкции выше и перед командой `start` введи в Monitor `machine StartGdbServer 3333`. В отдельном терминале из корня проекта запусти `arm-none-eabi-gdb build/games.elf` с путём к тому же ELF. Введи команды в GDB.
+- [Сборка, автопроверки USART2 и Doxygen](docs/INTEGRATION.md).
+- [Проверенный коммит `c685eaf`](https://github.com/zaordy5/mcu-console-games/commit/c685eafb7e9744f5ef9658c8a939d5a09b5dba13) · [CI](https://github.com/zaordy5/mcu-console-games/actions/runs/44611936913) · [Независимая сборка и запуск](https://github.com/zaordy5/mcu-console-games/pull/10#issuecomment-7021876546).
+- [Общий интерфейс Game](include/game.h) · [Профиль STM32F4 Discovery](emulation/stm32f4.resc).
 
-```gdb
-target remote localhost:3333
-break main
-monitor start
-continue
-next
+## Работа команды
+
+`develop` — рабочая ветка. Готовые изменения по играм отправляются в неё через pull request с проверкой участника команды. Самостоятельные правки документации можно вносить напрямую, если они не пересекаются с чужой работой. `main` содержит проверенную сборку и инструкцию для запуска. [Дорожная карта](docs/ROADMAP.md) · [Интеграция трёх игр](https://github.com/zaordy5/mcu-console-games/pull/10)
+
+</details>
+
+<details>
+<summary><strong>English version</strong></summary>
+
+## Project
+
+The firmware runs Tetris, Minesweeper, and single-player Pong on one STM32F407 target. Renode 1.17.0 emulates the STM32F4 Discovery board. The USART2 analyzer handles keyboard input and ANSI RGB output.
+
+| Menu key | Game | Features |
+|---|---|---|
+| `1` | [Tetris](docs/TETRIS.md) | Seven tetrominoes, next-piece preview, landing ghost, and speed levels. |
+| `2` | [Minesweeper](docs/minesweeper.md) | Safe first move, flags, campaign levels, custom boards, and resume. |
+| `3` | [Pong](docs/PONG.md) | Single-player matches against the CPU, three difficulties, and level progression. |
+
+Select a game, then press `1`, `2`, or `3` to choose a difficulty. Use `Q` to return to the launcher. Use an ANSI truecolor terminal of at least 80 × 24 characters.
+
+## Build and run
+
+Install CMake 3.16+, Ninja, Arm GNU Toolchain, and Renode 1.17.0. Run the following commands from the repository root.
+
+```sh
+cmake -S . -B build -G Ninja -DCMAKE_TOOLCHAIN_FILE=cmake/arm-gcc.cmake
+cmake --build build
 ```
 
-После остановки на `main` команда `next` выполняет следующую строку, `step` заходит в функцию. Такой сеанс пригоден для разработки. Для конкурса отдельно покажите пошаговую отладку на реальной плате через JTAG или SWD и приложите фото или видео запуска. [Документация Renode по GDB](https://renode.readthedocs.io/en/latest/debugging/gdb.html)
+Set the absolute path to `build/games.elf` with `set bin` in the Renode Monitor, include `emulation/stm32f4.resc`, and type `start`. The [verified CI archive](https://github.com/zaordy5/mcu-console-games/actions/runs/44611936913/artifacts/14572957152) also includes the ELF, a standalone Renode script, and UART logs.
 
-## Задачи команды
+See the [integration guide](docs/INTEGRATION.md) for automated checks and Doxygen. CI and an independent clean build passed on [`c685eaf`](https://github.com/zaordy5/mcu-console-games/commit/c685eafb7e9744f5ef9658c8a939d5a09b5dba13).
 
-- #1 — тетрис.
-- #2 — сапёр.
-- #3 — пинг-понг.
-- #4 — плата, общее меню, сборка и материалы для сдачи.
-
-## Общая ветка и правила для GPT
-
-`develop` — общая рабочая ветка для всей команды. В неё попадают готовые изменения по играм, прошивке и сборке. `main` хранит проверенную версию для сдачи и обновляется через pull request из `develop` после проверки командой.
-
-### Перед работой
-
-1. Прочитай этот раздел, открой задачу и проверь открытые pull request по тем же файлам.
-2. Получи актуальную версию `origin/develop` перед редактированием. Если другой участник уже меняет общий код, согласуй границы работы в задаче или PR.
-3. При параллельной работе или изменении общих интерфейсов создай ветку от `develop`, например `feat/2-minesweeper`. Готовые изменения отправляй в `develop` через pull request с проверкой одного участника. Небольшое самостоятельное изменение можно отправить напрямую в `develop`, если команда в этот момент не меняет те же файлы.
-
-### Когда делать коммит
-
-- Делай отдельный коммит после каждого законченного изменения, важного для команды. Это может быть готовая механика игры, исправление ошибки, изменение общего интерфейса, конфигурации сборки или инструкции по запуску.
-- Перед коммитом просмотри diff и запусти доступные проверки. Включай в коммит только файлы своей задачи. Оставляй временные файлы, результаты сборки и секреты вне репозитория.
-- Пиши сообщение по результату изменения, например `feat(minesweeper): add mine reveal and loss state` или `fix(pong): handle paddle edge collision`.
-- Отправляй коммит в GitHub, чтобы команда сразу видела результат. Если ветка обновилась, получи новые изменения и перенеси поверх них свои локальные коммиты. Не используй force push. При конфликте, затрагивающем чужую логику, согласуй решение с автором.
-
-### Что оставить после работы
-
-Укажи в задаче или pull request, что сделано, где лежат изменения и как ты их проверил. Для прямого коммита приложи ссылку на него. Если обязательная для задачи проверка ещё впереди, укажи, что осталось проверить, и оставь изменения в черновом pull request. При передаче задачи следующему GPT сообщи номер задачи, ветку или PR и ближайший шаг.
-
-Команда для новой сессии GPT
-
-> Открой репозиторий `zaordy5/mcu-console-games`, прочитай README и `docs/ROADMAP.md`. Выбери указанный этап и следуй его критериям приёмки и разделу «Общая ветка и правила для GPT». Начни с актуальной `develop`. Возьми указанную задачу и зафиксируй законченные изменения в GitHub по правилам этого раздела.
-
-## Что нужно для сдачи
-
-- Проект на C или C++ с GCC и CMake. В инструкции укажите зависимости, команды и способ повторить сборку на другом компьютере.
-- Doxygen для собственных функций, глобальных переменных, макросов и классов. Собственные файлы исходного кода должны быть не длиннее 2000 строк.
-- Фото или видео запуска на микроконтроллере, демонстрация пошаговой отладки по JTAG или SWD и логи или читаемые снимки сборки и запуска.
+</details>

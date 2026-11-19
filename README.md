@@ -64,6 +64,10 @@ Three terminal games in one bare-metal firmware image, with a shared pink retrow
 | 10 × 10 | 12 мин | 18 мин | 25 мин |
 | 12 × 12 | 17 мин | 25 мин | 36 мин |
 
+[![Пройденное пользовательское поле Сапёра 12 × 12 с 15 минами](docs/screenshots/minesweeper-custom-cleared.png)](docs/screenshots/minesweeper-custom-cleared.png)
+
+На скриншоте открыты все 129 безопасных клеток за 48 секунд. Чтобы сыграть на том же поле, откройте Сапёр, нажмите `L` до первого хода и введите `12/15/24/2654427571/0`.
+
 [Управление, правила Logic и пример кода поля](docs/minesweeper.md)
 
 ### Пинг-понг · победите компьютер на десяти уровнях

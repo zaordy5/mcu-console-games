@@ -20,6 +20,14 @@
 #define ROTATION_INTERVAL_MS 180u
 /** Time to discard an incomplete terminal key sequence. */
 #define INPUT_SEQUENCE_TIMEOUT_MS 150u
+/** Cached cell marker for a projected landing outline. */
+#define GHOST_CELL (TETRIS_SHAPES + 1u)
+/** Screen row of the four-line notification, below the preview. */
+#define QUAD_ROW 12
+/** Screen column of the notification, to the right of the field. */
+#define QUAD_COLUMN 28
+/** Duration of the four-line notification. */
+#define QUAD_NOTICE_MS 1200u
 
 /** Game session used by the synchronous firmware main loop. */
 static Tetris session;
@@ -29,6 +37,12 @@ static uint8_t shown[TETRIS_HEIGHT][TETRIS_WIDTH];
 static uint32_t shown_lines;
 /** Color of the next piece last drawn in the preview. */
 static uint8_t shown_next;
+/** Four-line clears already handled by the renderer. */
+static uint32_t handled_quads;
+/** Remaining time of the four-line notification. */
+static uint32_t quad_notice_ms;
+/** Whether the notification is on screen. */
+static bool quad_notice_drawn;
 /** The next draw must clear and redraw the frame. */
 static bool new_frame;
 /** A tick or key changed the visible game state. */
@@ -82,14 +96,14 @@ static void move_cursor(unsigned row, unsigned column)
     console_write("H");
 }
 
-/** Write a horizontal border spanning the given number of cells. */
+/** Write a horizontal border in the current style. */
 static void draw_border(int width)
 {
-    console_write("\033[36m+");
+    console_write("+");
     for (int x = 0; x < width; ++x) {
         console_write("--");
     }
-    console_write("+\033[0m\r\n");
+    console_write("+\r\n");
 }
 
 /** Draw the fixed frame and reset the displayed board cache. */
@@ -97,74 +111,121 @@ static void draw_frame(void)
 {
     console_write("\033[0m\033[2J\033[H\033[1;36mTETRIS\033[0m | Difficulty: ");
     console_write(difficulty_labels[session.difficulty]);
-    console_write("\r\n\r\n");
+    console_write("\r\n\r\n\033[36m");
     draw_border(TETRIS_WIDTH);
     for (int y = 0; y < TETRIS_HEIGHT; ++y) {
-        console_write("\033[36m|\033[0m");
+        console_write("|");
         for (int x = 0; x < TETRIS_WIDTH; ++x) {
             console_write("  ");
             shown[y][x] = 0;
         }
-        console_write("\033[36m|\033[0m\r\n");
+        console_write("|\r\n");
     }
     draw_border(TETRIS_WIDTH);
-    console_write("\033[36mMOVE\033[0m A/D or Left/Right  \033[36mTURN\033[0m W/Up\r\n");
-    console_write("\033[36mDROP\033[0m S/Down  \033[36mMENU\033[0m Q");
+    console_write("MOVE\033[0m A/D or Left/Right  \033[36mTURN\033[0m W/Up\r\n");
+    console_write("\033[36mDROP\033[0m S/Down  \033[36mHARD\033[0m Space  \033[36mMENU\033[0m Q");
     move_cursor(NEXT_TOP - 2, NEXT_LEFT - 1);
-    console_write("\033[1;36mNext block:\033[0m");
+    console_write("\033[1;36mNext block:\033[0;36m");
     move_cursor(NEXT_TOP - 1, NEXT_LEFT - 1);
     draw_border(TETRIS_PIECE_SIZE);
     for (unsigned y = 0; y < TETRIS_PIECE_SIZE; ++y) {
         move_cursor(NEXT_TOP + y, NEXT_LEFT - 1);
-        console_write("\033[36m|        |\033[0m");
+        console_write("|        |");
     }
     move_cursor(NEXT_TOP + TETRIS_PIECE_SIZE, NEXT_LEFT - 1);
     draw_border(TETRIS_PIECE_SIZE);
+    console_write("\033[0m");
 }
 
 /** Write cell outlines or spaces using the style already set at the cursor. */
 static void write_cells(int length, uint8_t color)
 {
     char cells[2 * TETRIS_WIDTH + 1];
+    char left = ' ';
+    char right = ' ';
+    if (color == GHOST_CELL) {
+        left = right = '.';
+    } else if (color != 0) {
+        left = '[';
+        right = ']';
+    }
     for (int i = 0; i < length; ++i) {
-        cells[2 * i] = color ? '[' : ' ';
-        cells[2 * i + 1] = color ? ']' : ' ';
+        cells[2 * i] = left;
+        cells[2 * i + 1] = right;
     }
     cells[2 * length] = '\0';
 
     console_write(cells);
 }
 
+/** Overlay the landing hint on otherwise empty cells. */
+static uint8_t visible_cell(int x, int y, int landing)
+{
+    uint8_t color = tetris_cell(&session, x, y);
+    if (color == 0 && y >= landing && y < landing + TETRIS_PIECE_SIZE &&
+        tetris_piece_at(&session, x, y, landing)) {
+        return GHOST_CELL;
+    }
+    return color;
+}
+
 /** Paint each contiguous span of changed cells with a single cursor move. */
 static void draw_board(void)
 {
+    int landing = tetris_landing_y(&session);
     for (int y = 0; y < TETRIS_HEIGHT; ++y) {
+        uint8_t row[TETRIS_WIDTH];
+        for (int col = 0; col < TETRIS_WIDTH; ++col) {
+            row[col] = visible_cell(col, y, landing);
+        }
         int x = 0;
         while (x < TETRIS_WIDTH) {
-            if (tetris_cell(&session, x, y) == shown[y][x]) {
+            if (row[x] == shown[y][x]) {
                 ++x;
                 continue;
             }
             move_cursor((unsigned)(FIELD_TOP + y), (unsigned)(2 + 2 * x));
             uint8_t style = 0;
             do {
-                uint8_t color = tetris_cell(&session, x, y);
+                uint8_t color = row[x];
                 int first = x;
+                uint8_t next_style = color == GHOST_CELL ? 0 : color;
                 do {
                     shown[y][x++] = color;
-                } while (x < TETRIS_WIDTH && shown[y][x] != color &&
-                         tetris_cell(&session, x, y) == color);
-                if (style != color) {
-                    console_write(backgrounds[color]);
-                    style = color;
+                } while (x < TETRIS_WIDTH && shown[y][x] != color && row[x] == color);
+                if (style != next_style) {
+                    console_write(backgrounds[next_style]);
+                    style = next_style;
                 }
                 write_cells(x - first, color);
-            } while (x < TETRIS_WIDTH && tetris_cell(&session, x, y) != shown[y][x]);
+            } while (x < TETRIS_WIDTH && row[x] != shown[y][x]);
             if (style != 0) {
                 console_write(backgrounds[0]);
             }
         }
     }
+}
+
+/** Announce a four-line clear, then erase the message when its timer expires. */
+static void draw_quad_notice(void)
+{
+    if (handled_quads != session.quad_clears) {
+        handled_quads = session.quad_clears;
+        quad_notice_ms = QUAD_NOTICE_MS;
+    }
+    bool visible = quad_notice_ms != 0;
+    if (quad_notice_drawn == visible) {
+        return;
+    }
+    move_cursor(QUAD_ROW, QUAD_COLUMN);
+    if (visible) {
+        console_write("\033[1;33m4 LINES +");
+        write_number(TETRIS_QUAD_SCORE);
+        console_write("\033[0m");
+    } else {
+        console_write("\033[K");
+    }
+    quad_notice_drawn = visible;
 }
 
 /** Draw or clear the next tetromino, keeping its outline separate from the board. */
@@ -219,6 +280,9 @@ static void start_game(GameDifficulty difficulty)
     input_state = INPUT_KEY;
     input_wait_ms = 0;
     rotation_wait_ms = 0;
+    handled_quads = 0;
+    quad_notice_ms = 0;
+    quad_notice_drawn = false;
 }
 
 /** Decode ANSI arrows and discard unrelated terminal sequences. */
@@ -286,6 +350,9 @@ static void handle_key(char key)
     case 'S':
         dirty |= tetris_soft_drop(&session);
         break;
+    case ' ':
+        dirty |= tetris_hard_drop(&session);
+        break;
     default:
         break;
     }
@@ -301,6 +368,14 @@ static void tick_game(uint32_t elapsed_ms)
                 input_state = INPUT_KEY;
             } else {
                 input_wait_ms -= elapsed_ms;
+            }
+        }
+        if (quad_notice_ms != 0) {
+            if (elapsed_ms >= quad_notice_ms) {
+                quad_notice_ms = 0;
+                dirty = true;
+            } else {
+                quad_notice_ms -= elapsed_ms;
             }
         }
         dirty |= tetris_tick(&session, elapsed_ms);
@@ -323,6 +398,7 @@ static void draw_game(void)
         draw_next();
     }
     draw_board();
+    draw_quad_notice();
     if (session.lost) {
         move_cursor(RESULT_ROW, 1);
         console_write("\033[2K\033[31mGame over.\033[0m  Q - menu");

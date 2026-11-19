@@ -77,6 +77,28 @@ static void test_lock(void)
     puts("PASS locking: floor and settled stack");
 }
 
+/** Verify that the ghost predicts the hard drop without mutating the game. */
+static void test_hard_drop(void)
+{
+    Tetris game;
+    place_bar(&game, BAR_HORIZONTAL, 3, 0);
+    game.board[8][4] = 4;
+    assert(tetris_landing_y(&game) == 6);
+    assert(game.y == 0 && game.lines == 0 && game.score == 0 && game.board[7][3] == 0);
+    assert(tetris_piece_at(&game, 3, 7, 6));
+    assert(tetris_piece_at(&game, 6, 7, 6));
+    assert(!tetris_piece_at(&game, 3, 8, 6));
+    uint8_t next = tetris_next_color(&game);
+    assert(tetris_hard_drop(&game));
+    for (int x = 3; x <= 6; ++x) {
+        assert(game.board[7][x] == 1);
+        assert(game.board[TETRIS_HEIGHT - 1][x] == 0);
+    }
+    assert(game.y == 0 && game.color == next && game.board[8][4] == 4);
+    assert(game.until_drop == tetris_interval(&game) && game.score == 0);
+    puts("PASS ghost, hard drop, settled obstacle and next piece");
+}
+
 /** Check single and non-adjacent row clears, compaction, score, and empty top rows. */
 static void test_clear_rows(void)
 {
@@ -85,7 +107,7 @@ static void test_clear_rows(void)
     fill_except(&game, TETRIS_HEIGHT - 1, 4, 7);
     game.board[TETRIS_HEIGHT - 2][0] = 7;
     assert(tetris_soft_drop(&game));
-    assert(game.lines == 1 && game.score == 100);
+    assert(game.lines == 1 && game.score == 100 && game.quad_clears == 0);
     assert(game.board[TETRIS_HEIGHT - 1][0] == 7 && game.board[TETRIS_HEIGHT - 1][4] == 0);
 
     place_bar(&game, BAR_VERTICAL, 4, TETRIS_HEIGHT - 4);
@@ -95,17 +117,21 @@ static void test_clear_rows(void)
     game.board[TETRIS_HEIGHT - 3][1] = 7;
     game.board[0][0] = 3;
     assert(tetris_soft_drop(&game));
-    assert(game.lines == 2 && game.score == 400 && !game.lost);
+    assert(game.lines == 2 && game.score == 400 && game.quad_clears == 0 && !game.lost);
     assert(game.board[TETRIS_HEIGHT - 1][0] == 6 && game.board[TETRIS_HEIGHT - 1][6] == 1);
     assert(game.board[TETRIS_HEIGHT - 2][1] == 7);
     assert(game.board[0][0] == 0 && game.board[1][0] == 0 && game.board[2][0] == 3);
 
-    place_bar(&game, BAR_VERTICAL, 4, TETRIS_HEIGHT - 4);
+    place_bar(&game, BAR_VERTICAL, 4, 0);
     for (int y = TETRIS_HEIGHT - 4; y < TETRIS_HEIGHT; ++y) {
         fill_except(&game, y, 6, 6);
     }
-    assert(tetris_soft_drop(&game));
-    assert(game.lines == 4 && game.score == 1600 && game.board[TETRIS_HEIGHT - 1][6] == 0);
+    assert(tetris_landing_y(&game) == TETRIS_HEIGHT - 4);
+    assert(tetris_hard_drop(&game));
+    assert(game.lines == 4 && game.score == TETRIS_QUAD_SCORE && game.quad_clears == 1);
+    assert(game.board[TETRIS_HEIGHT - 1][6] == 0);
+    tetris_reset(&game, TETRIS_HARD, 0);
+    assert(game.quad_clears == 0);
     puts("PASS line clearing: one, two separated, and four adjacent rows");
 }
 
@@ -124,6 +150,7 @@ static void test_loss_and_restart(void)
     assert(tetris_soft_drop(&game) && game.lost);
     assert(!tetris_move(&game, -1) && !tetris_rotate(&game));
     assert(!tetris_soft_drop(&game) && !tetris_tick(&game, 1000));
+    assert(!tetris_hard_drop(&game));
     assert(game.score == 400 && tetris_cell(&game, game.x, game.y) == 2);
 
     tetris_reset(&game, TETRIS_HARD, 1);
@@ -308,6 +335,7 @@ int main(void)
 {
     test_movement_and_rotation();
     test_lock();
+    test_hard_drop();
     test_clear_rows();
     test_loss_and_restart();
     test_gravity();

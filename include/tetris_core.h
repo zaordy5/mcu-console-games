@@ -16,6 +16,10 @@
 #define TETRIS_SHAPES 7
 /** Side length of a piece bitmap and of the next-piece preview. */
 #define TETRIS_PIECE_SIZE 4
+/** Base score multiplied by the square of the number of cleared lines. */
+#define TETRIS_LINE_SCORE 100u
+/** Score for clearing four lines with one piece. */
+#define TETRIS_QUAD_SCORE (TETRIS_LINE_SCORE * 16u)
 
 /** Starting gravity settings. */
 typedef enum {
@@ -29,6 +33,7 @@ typedef struct {
     uint8_t board[TETRIS_HEIGHT][TETRIS_WIDTH]; /**< Settled cell colors, zero for empty. */
     uint32_t score;        /**< Running score. */
     uint32_t lines;        /**< Total full rows removed. */
+    uint32_t quad_clears;  /**< Number of times one piece cleared four rows. */
     uint32_t random;       /**< Nonzero xorshift state. */
     uint32_t until_drop;   /**< Milliseconds until the next gravity step. */
     uint16_t shape;        /**< Active shape bitmap in a row-major 4x4 box. */
@@ -56,6 +61,12 @@ bool tetris_rotate(Tetris *game);
 /** Advance the piece one row immediately, locking it if blocked. */
 bool tetris_soft_drop(Tetris *game);
 
+/** Return the lowest legal top row for the active piece. */
+int tetris_landing_y(const Tetris *game);
+
+/** Immediately place the current piece at its landing position and spawn the next. */
+bool tetris_hard_drop(Tetris *game);
+
 /** Advance gravity by elapsed milliseconds and report a change to the board or piece. */
 bool tetris_tick(Tetris *game, uint32_t elapsed_ms);
 
@@ -67,6 +78,9 @@ uint32_t tetris_interval(const Tetris *game);
 
 /** Return the visible color, including the active piece, or zero outside the board. */
 uint8_t tetris_cell(const Tetris *game, int x, int y);
+
+/** Return whether the active piece covers a cell if placed at the given top row. */
+bool tetris_piece_at(const Tetris *game, int x, int y, int top);
 
 /** Return the next piece's color, or zero after game over. */
 uint8_t tetris_next_color(const Tetris *game);

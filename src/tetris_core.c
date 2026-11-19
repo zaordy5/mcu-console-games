@@ -13,8 +13,6 @@
 #define LEVEL_STEP_MS 70u
 /** Fastest permitted automatic drop interval. */
 #define MIN_INTERVAL_MS 100u
-/** Score multiplier for the square of the number of rows cleared together. */
-#define LINE_SCORE 100u
 /** Square bitmap; turning this piece leaves its cells in place. */
 #define SQUARE_SHAPE 0x0066u
 
@@ -130,14 +128,9 @@ static unsigned clear_lines(Tetris *game)
     return cleared;
 }
 
-/** Drop a row if possible, otherwise settle the piece, score lines and spawn. */
-static void step_down(Tetris *game)
+/** Settle the current piece, award points for cleared rows and spawn the next. */
+static void lock_piece(Tetris *game)
 {
-    if (fits(game, game->shape, game->x, game->y + 1)) {
-        ++game->y;
-        return;
-    }
-
     for (int y = 0; y < TETRIS_PIECE_SIZE; ++y) {
         for (int x = 0; x < TETRIS_PIECE_SIZE; ++x) {
             if (contains(game->shape, x, y)) {
@@ -147,8 +140,21 @@ static void step_down(Tetris *game)
     }
     unsigned cleared = clear_lines(game);
     game->lines += cleared;
-    game->score += LINE_SCORE * cleared * cleared;
+    game->score += TETRIS_LINE_SCORE * cleared * cleared;
+    if (cleared == 4u) {
+        ++game->quad_clears;
+    }
     spawn(game);
+}
+
+/** Drop one row or settle the active piece if it has reached an obstacle. */
+static void step_down(Tetris *game)
+{
+    if (fits(game, game->shape, game->x, game->y + 1)) {
+        ++game->y;
+    } else {
+        lock_piece(game);
+    }
 }
 
 void tetris_reset(Tetris *game, TetrisDifficulty difficulty, uint32_t seed)
@@ -162,6 +168,7 @@ void tetris_reset(Tetris *game, TetrisDifficulty difficulty, uint32_t seed)
         ? difficulty : TETRIS_NORMAL;
     game->score = 0;
     game->lines = 0;
+    game->quad_clears = 0;
     game->random = seed ? seed : 1u;
     shuffle(game);
     spawn(game);
@@ -225,6 +232,26 @@ bool tetris_soft_drop(Tetris *game)
     return true;
 }
 
+int tetris_landing_y(const Tetris *game)
+{
+    int y = game->y;
+    while (!game->lost && fits(game, game->shape, game->x, y + 1)) {
+        ++y;
+    }
+    return y;
+}
+
+bool tetris_hard_drop(Tetris *game)
+{
+    if (game->lost) {
+        return false;
+    }
+    game->y = tetris_landing_y(game);
+    lock_piece(game);
+    game->until_drop = tetris_interval(game);
+    return true;
+}
+
 bool tetris_tick(Tetris *game, uint32_t elapsed_ms)
 {
     if (game->lost) {
@@ -266,14 +293,18 @@ uint8_t tetris_cell(const Tetris *game, int x, int y)
         return 0;
     }
 
-    int local_x = x - game->x;
-    int local_y = y - game->y;
-    if (!game->lost && local_x >= 0 && local_x < TETRIS_PIECE_SIZE &&
-        local_y >= 0 && local_y < TETRIS_PIECE_SIZE &&
-        contains(game->shape, local_x, local_y)) {
+    if (tetris_piece_at(game, x, y, game->y)) {
         return game->color;
     }
     return game->board[y][x];
+}
+
+bool tetris_piece_at(const Tetris *game, int x, int y, int top)
+{
+    int local_x = x - game->x;
+    int local_y = y - top;
+    return !game->lost && local_x >= 0 && local_x < TETRIS_PIECE_SIZE &&
+           local_y >= 0 && local_y < TETRIS_PIECE_SIZE && contains(game->shape, local_x, local_y);
 }
 
 uint8_t tetris_next_color(const Tetris *game)

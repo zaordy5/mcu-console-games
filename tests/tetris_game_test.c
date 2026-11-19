@@ -283,6 +283,23 @@ static void test_preview_update(void)
     puts("PASS Game API: next piece updates when the earlier preview spawns");
 }
 
+/** Check that Space places the active shape on top of its visible ghost. */
+static void test_ghost_and_space(void)
+{
+    tetris_game.start(GAME_EASY);
+    clear_output();
+    tetris_game.draw();
+    assert(strstr(output, "Space"));
+    assert(strstr(output, "\033[21;10H......"));
+    clear_output();
+    tetris_game.key(' ');
+    tetris_game.draw();
+    assert(strstr(output, "\033[21;10H\033[30;45m[][][]"));
+    assert(strstr(output, "\033[6;30H"));
+    assert(!strstr(output, "4 LINES"));
+    puts("PASS Game API: Space locks on the ghost and refreshes the preview");
+}
+
 /** Run all Game callback checks. */
 int main(void)
 {
@@ -292,6 +309,7 @@ int main(void)
     test_arrow_keys();
     test_rotation_repeat();
     test_preview_update();
+    test_ghost_and_space();
     test_level_replay();
     return 0;
 }

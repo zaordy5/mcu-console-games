@@ -15,6 +15,13 @@ DIFFICULTY = b"Choose difficulty"
 GAME_OVER = b"\x1b[31mGame over.\x1b[0m  Q - menu"
 BOARD_PAINT = re.compile(rb"\x1b\[[0-9]+;(?:[2-9]|1[0-9]|2[0-5])H\x1b\[30;(?:4[1-7]|10[0-7])m\[\]")
 BOTTOM_CURSOR = b"\x1b[24;40H"
+QUAD_NOTICE = b"\x1b[12;28H\x1b[1;33m4 LINES +1600\x1b[0m"
+QUAD_ERASE = b"\x1b[12;28H\x1b[K"
+# One group of turns and horizontal moves per piece, followed by hard drop.
+QUAD_REPLAY = (
+    "D", "WAA", "WAAAAA", "AAA", "WDD", "W", "WWWDDDDD",
+    "WWAAA", "WDDDD", "AAAAA", "AA", "WWWDDD", "W", "WDDDDD",
+)
 
 
 def send_keys(commands: list[str], keys: str, interval: str) -> None:
@@ -32,6 +39,7 @@ def check_uart(data: bytes) -> None:
         DIFFICULTY, b"Difficulty: Easy", MENU,
         DIFFICULTY, b"Difficulty: Hard", MENU,
         DIFFICULTY, b"Difficulty: Normal", MENU,
+        DIFFICULTY, b"Difficulty: Easy", MENU,
     )
     if len(screens) != len(labels):
         raise ValueError(f"Expected {len(labels)} screens, received {len(screens)}")
@@ -52,6 +60,13 @@ def check_uart(data: bytes) -> None:
         raise ValueError("Easy round should draw the start, gravity and key updates")
     if hard.count(GAME_OVER) != 1 or normal.count(BOTTOM_CURSOR) != 1:
         raise ValueError("Hard game over or clean Normal restart was not observed")
+    demo = screens[13]
+    if b"\x1b[21;10H......" not in demo or b"Space" not in demo:
+        raise ValueError("The opening frame is missing the ghost or the hard-drop hint")
+    if b"Score 1600 L1 Ln4" not in demo or demo.count(QUAD_NOTICE) != 1:
+        raise ValueError("The replay did not score one four-line clear")
+    if QUAD_ERASE not in demo.split(QUAD_NOTICE, 1)[1]:
+        raise ValueError("The four-line notification did not expire")
 
 
 def run_renode(renode: str, elf: Path, profile: Path) -> bytes:
@@ -77,8 +92,16 @@ def run_renode(renode: str, elf: Path, profile: Path) -> bytes:
         send_keys(commands, "13", "00:00:00.10")
         send_keys(commands, "s" * 100, "00:00:00.03")
         send_keys(commands, "Q12q", "00:00:00.12")
+        send_keys(commands, "11", "00:00:00.08")
+        for moves in QUAD_REPLAY:
+            for key in moves:
+                interval = "00:00:00.19" if key == "W" else "00:00:00.025"
+                send_keys(commands, key, interval)
+            send_keys(commands, " ", "00:00:00.04")
+        commands.append('emulation RunFor "00:00:01.25"')
+        send_keys(commands, "Q", "00:00:00.08")
 
-        args = [renode, "--disable-gui", "--hide-analyzers", "--plain", str(scenario)]
+        args = [renode, "--disable-gui", "--hide-analyzers", "--plain", "--port", "-1", str(scenario)]
         for command in (*commands, "quit"):
             args.extend(("-e", command))
         result = subprocess.run(args, capture_output=True, text=True, timeout=120, check=False)
@@ -103,7 +126,7 @@ def main() -> None:
         check_uart(data)
     except (OSError, RuntimeError, ValueError, subprocess.TimeoutExpired) as error:
         parser.exit(1, f"Tetris USART2 check failed: {error}\n")
-    print("PASS USART2: Easy play and exit; Hard game over; clean restart on Normal")
+    print("PASS USART2: play and exit, game over, restart, ghost and four-line hard drop")
 
 
 if __name__ == "__main__":

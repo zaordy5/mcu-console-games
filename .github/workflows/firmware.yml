@@ -34,6 +34,13 @@ jobs:
           gcc -std=c11 -Wall -Wextra -Werror -Iinclude -Isrc/minesweeper \
             tests/minesweeper.c src/minesweeper/*.c -o build/minesweeper-check
           ./build/minesweeper-check
+      - name: Boot the default Renode demo
+        run: |
+          demo_log="$RUNNER_TEMP/demo.uart"
+          timeout 90s "$RUNNER_TEMP/renode/renode" --disable-gui --hide-analyzers --plain \
+            emulation/stm32f4.resc -e "sysbus.usart2 CreateFileBackend @$demo_log true" \
+            -e 'emulation RunFor "00:00:02"' -e quit
+          grep -F 'Hello World! stm32f4_disco' "$demo_log"
       - name: Test menu input on Renode
         run: |
           { echo "\$bin=@$PWD/build/games.elf"; tail -n +4 emulation/stm32f4.resc; } > "$RUNNER_TEMP/menu.resc"
@@ -103,7 +110,7 @@ jobs:
           assert restored, restored_frame[:180]
           print(f"Clock at the last game frame, pause and resume: "
                 f"{before_pause.decode()}, {stopped[1].decode()}, {restored[1].decode()} seconds")
-          assert int(before_pause) > 0 and before_pause == stopped[1] == restored[1]
+          assert before_pause == stopped[1] == restored[1] == b"1"
           assert b"\x1b[95m ? " not in resume, "The first open should clear the question mark"
           assert selected + b"[ ]" in hard
           assert b"Layout search failed" not in hard

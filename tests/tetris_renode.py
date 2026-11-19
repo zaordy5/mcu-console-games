@@ -12,11 +12,14 @@ CLEAR = b"\x1b[2J\x1b[H"
 RESET = b"\x1b[0m"
 MENU = b"MCU Console Games"
 DIFFICULTY = b"Choose difficulty"
-GAME_OVER = b"\x1b[31mGame over.\x1b[0m  Q - menu"
-BOARD_PAINT = re.compile(rb"\x1b\[[0-9]+;(?:[2-9]|1[0-9]|2[0-5])H\x1b\[30;(?:4[1-7]|10[0-7])m\[\]")
+GAME_OVER = b"\x1b[2KGame over."
+BOARD_PAINT = re.compile(rb"\x1b\[[0-9]+;(?:[2-9]|1[0-9]|2[0-5])H(?:\x1b\[[0-9;]+m)*\[\]")
 BOTTOM_CURSOR = b"\x1b[24;40H"
-QUAD_NOTICE = b"\x1b[12;28H\x1b[1;33m4 LINES +1600\x1b[0m"
-QUAD_ERASE = b"\x1b[12;28H\x1b[K"
+FIELD_BG = b"\x1b[48;2;36;22;56m"
+BASE_BG = b"\x1b[48;2;24;15;39m"
+I_BG = b"\x1b[48;2;194;217;255m"
+QUAD_NOTICE = re.compile(rb"\x1b\[12;28H\x1b\[38;2;255;203;151m(?:\x1b\[48;2;24;15;39m)?4 LINES \+1600")
+QUAD_ERASE = re.compile(rb"\x1b\[12;28H(?:\x1b\[[0-9;]+m)*\x1b\[K")
 # One group of turns and horizontal moves per piece, followed by hard drop.
 QUAD_REPLAY = (
     "D", "WAA", "WAAAAA", "AAA", "WDD", "W", "WWWDDDDD",
@@ -52,8 +55,12 @@ def check_uart(data: bytes) -> None:
         drop = f"Drop: {interval} ms".encode()
         if b"Score 0 L1 Ln0" not in game or drop not in game or not BOARD_PAINT.search(game):
             raise ValueError(f"Missing starting HUD or ANSI color at {interval} ms")
-        if b"Next block:" not in game or b"\x1b[7;30H\x1b[30;46m[]" not in game:
+        if b"Next block:" not in game or I_BG + b"[][][][]" not in game:
             raise ValueError("Missing the opening next-piece preview")
+        if FIELD_BG not in game or BASE_BG not in game:
+            raise ValueError("Missing retrowave board or canvas background")
+        if not game.endswith(RESET):
+            raise ValueError("Tetris did not reset the terminal style before returning to menu")
     if b"A/D or Left/Right" not in easy or b"W/Up" not in easy or b"S/Down" not in easy:
         raise ValueError("The game screen is missing the arrow key guide")
     if easy.count(BOTTOM_CURSOR) < 6 or b"Game over." in easy:
@@ -63,9 +70,15 @@ def check_uart(data: bytes) -> None:
     demo = screens[13]
     if b"\x1b[21;10H......" not in demo or b"Space" not in demo:
         raise ValueError("The opening frame is missing the ghost or the hard-drop hint")
-    if b"Score 1600 L1 Ln4" not in demo or demo.count(QUAD_NOTICE) != 1:
+    if not demo.endswith(RESET):
+        raise ValueError("The demo did not reset the terminal style")
+    notice = list(QUAD_NOTICE.finditer(demo))
+    if b"Score 1600 L1 Ln4" not in demo or len(notice) != 1:
         raise ValueError("The replay did not score one four-line clear")
-    if QUAD_ERASE not in demo.split(QUAD_NOTICE, 1)[1]:
+    quad_frame = demo[:notice[0].start()].rsplit(BOTTOM_CURSOR, 1)[-1]
+    if FIELD_BG + b"  " not in quad_frame:
+        raise ValueError("The four-line clear did not repaint vacated cells in the field color")
+    if not QUAD_ERASE.search(demo, notice[0].end()):
         raise ValueError("The four-line notification did not expire")
 
 

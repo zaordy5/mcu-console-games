@@ -64,14 +64,56 @@ static InputState input_state;
 /** Time before an incomplete escape sequence is discarded. */
 static uint32_t input_wait_ms;
 
-/** ANSI cell styles keyed by color, with a dark outline glyph over the fill. */
-static const char *const backgrounds[TETRIS_SHAPES + 1] = {
-    "\033[0m", "\033[30;46m", "\033[30;104m", "\033[30;43m",
-    "\033[30;47m", "\033[30;45m", "\033[30;42m", "\033[30;41m"
+/** Retrowave color roles matching the Minesweeper console. */
+typedef enum {
+    INK, MUTED, PINK, PEACH, LAVENDER, MINT, MELON, ICE, CREAM,
+    BASE, FIELD, SUNSET_VIOLET, SUNSET_PINK, SUNSET_PEACH, NO_COLOR
+} Color;
+
+/** Decimal RGB channels for ANSI SGR. */
+static const char *const rgb[] = {
+    [INK] = "255;238;250", [MUTED] = "205;170;209", [PINK] = "255;133;199",
+    [PEACH] = "255;203;151", [LAVENDER] = "217;190;255", [MINT] = "162;233;218",
+    [MELON] = "255;168;163", [ICE] = "194;217;255", [CREAM] = "255;229;183",
+    [BASE] = "24;15;39", [FIELD] = "36;22;56", [SUNSET_VIOLET] = "112;63;162",
+    [SUNSET_PINK] = "220;84;155", [SUNSET_PEACH] = "255;172;123"
 };
+
+/** Figure backgrounds in core order I, J, L, O, T, S, Z. */
+static const Color piece_colors[TETRIS_SHAPES] = {
+    ICE, LAVENDER, PEACH, CREAM, PINK, MINT, MELON
+};
+
+/** Color channels already set on the terminal. */
+static Color foreground = NO_COLOR, background = NO_COLOR;
 
 /** Display labels keyed by the portable starting difficulty. */
 static const char *const difficulty_labels[] = { "Easy", "Normal", "Hard" };
+
+/** Emit only channels that changed since the previous write. */
+static void style(Color fg, Color bg)
+{
+    if (fg != foreground) {
+        console_write("\033[38;2;");
+        console_write(rgb[fg]);
+        console_write("m");
+        foreground = fg;
+    }
+    if (bg != background) {
+        console_write("\033[48;2;");
+        console_write(rgb[bg]);
+        console_write("m");
+        background = bg;
+    }
+}
+
+/** Return the terminal to its normal colors and invalidate the style cache. */
+static void reset_style(void)
+{
+    console_write("\033[0m");
+    foreground = NO_COLOR;
+    background = NO_COLOR;
+}
 
 /** Write an unsigned decimal number without a formatted I/O dependency. */
 static void write_number(uint32_t number)
@@ -106,56 +148,105 @@ static void draw_border(int width)
     console_write("+\r\n");
 }
 
-/** Draw the fixed frame and reset the displayed board cache. */
-static void draw_frame(void)
+/** Write a run of spaces without changing the selected style. */
+static void blanks(int count)
 {
-    console_write("\033[0m\033[2J\033[H\033[1;36mTETRIS\033[0m | Difficulty: ");
-    console_write(difficulty_labels[session.difficulty]);
-    console_write("\r\n\r\n\033[36m");
-    draw_border(TETRIS_WIDTH);
-    for (int y = 0; y < TETRIS_HEIGHT; ++y) {
-        console_write("|");
-        for (int x = 0; x < TETRIS_WIDTH; ++x) {
-            console_write("  ");
-            shown[y][x] = 0;
-        }
-        console_write("|\r\n");
-    }
-    draw_border(TETRIS_WIDTH);
-    console_write("MOVE\033[0m A/D or Left/Right  \033[36mTURN\033[0m W/Up\r\n");
-    console_write("\033[36mDROP\033[0m S/Down  \033[36mHARD\033[0m Space  \033[36mMENU\033[0m Q");
-    move_cursor(NEXT_TOP - 2, NEXT_LEFT - 1);
-    console_write("\033[1;36mNext block:\033[0;36m");
-    move_cursor(NEXT_TOP - 1, NEXT_LEFT - 1);
-    draw_border(TETRIS_PIECE_SIZE);
-    for (unsigned y = 0; y < TETRIS_PIECE_SIZE; ++y) {
-        move_cursor(NEXT_TOP + y, NEXT_LEFT - 1);
-        console_write("|        |");
-    }
-    move_cursor(NEXT_TOP + TETRIS_PIECE_SIZE, NEXT_LEFT - 1);
-    draw_border(TETRIS_PIECE_SIZE);
-    console_write("\033[0m");
+    static const char spaces[2 * TETRIS_WIDTH + 1] = "                        ";
+    console_write(spaces + 2 * TETRIS_WIDTH - count);
 }
 
-/** Write cell outlines or spaces using the style already set at the cursor. */
-static void write_cells(int length, uint8_t color)
+/** Paint a run of board or preview cells with the same display value. */
+static void paint_cells(int length, uint8_t color)
 {
-    char cells[2 * TETRIS_WIDTH + 1];
-    char left = ' ';
-    char right = ' ';
-    if (color == GHOST_CELL) {
-        left = right = '.';
-    } else if (color != 0) {
-        left = '[';
-        right = ']';
+    if (color == 0) {
+        style(foreground, FIELD);
+        blanks(2 * length);
+        return;
     }
+
+    char cells[2 * TETRIS_WIDTH + 1];
+    bool ghost = color == GHOST_CELL;
+    style(ghost ? MUTED : BASE, ghost ? FIELD : piece_colors[color - 1u]);
     for (int i = 0; i < length; ++i) {
-        cells[2 * i] = left;
-        cells[2 * i + 1] = right;
+        cells[2 * i] = ghost ? '.' : '[';
+        cells[2 * i + 1] = ghost ? '.' : ']';
     }
     cells[2 * length] = '\0';
 
     console_write(cells);
+}
+
+/** Draw the three sunset colors across the upper border of the field. */
+static void draw_sunset(void)
+{
+    const int stripe_width = 2 * TETRIS_WIDTH / 3;
+    style(PINK, BASE);
+    console_write("+");
+    style(PINK, SUNSET_VIOLET);
+    blanks(stripe_width);
+    style(PINK, SUNSET_PINK);
+    blanks(stripe_width);
+    style(PINK, SUNSET_PEACH);
+    blanks(2 * TETRIS_WIDTH - 2 * stripe_width);
+    style(PINK, BASE);
+    console_write("+\r\n");
+}
+
+/** Draw the fixed frame and reset the displayed board cache. */
+static void draw_frame(void)
+{
+    reset_style();
+    style(PINK, BASE);
+    console_write("\033[2J\033[HTETRIS");
+    style(INK, BASE);
+    console_write(" | Difficulty: ");
+    console_write(difficulty_labels[session.difficulty]);
+    console_write("\r\n\r\n");
+    draw_sunset();
+    for (int y = 0; y < TETRIS_HEIGHT; ++y) {
+        console_write("|");
+        paint_cells(TETRIS_WIDTH, 0);
+        for (int x = 0; x < TETRIS_WIDTH; ++x) {
+            shown[y][x] = 0;
+        }
+        style(PINK, BASE);
+        console_write("|\r\n");
+    }
+    draw_border(TETRIS_WIDTH);
+    style(PEACH, BASE);
+    console_write("MOVE");
+    style(INK, BASE);
+    console_write(" A/D or Left/Right  ");
+    style(PEACH, BASE);
+    console_write("TURN");
+    style(INK, BASE);
+    console_write(" W/Up\r\n");
+    style(PEACH, BASE);
+    console_write("DROP");
+    style(INK, BASE);
+    console_write(" S/Down  ");
+    style(PEACH, BASE);
+    console_write("HARD");
+    style(INK, BASE);
+    console_write(" Space  ");
+    style(PEACH, BASE);
+    console_write("MENU");
+    style(INK, BASE);
+    console_write(" Q");
+    move_cursor(NEXT_TOP - 2, NEXT_LEFT - 1);
+    style(PINK, BASE);
+    console_write("Next block:");
+    move_cursor(NEXT_TOP - 1, NEXT_LEFT - 1);
+    draw_border(TETRIS_PIECE_SIZE);
+    for (unsigned y = 0; y < TETRIS_PIECE_SIZE; ++y) {
+        move_cursor(NEXT_TOP + y, NEXT_LEFT - 1);
+        console_write("|");
+        paint_cells(TETRIS_PIECE_SIZE, 0);
+        style(PINK, BASE);
+        console_write("|");
+    }
+    move_cursor(NEXT_TOP + TETRIS_PIECE_SIZE, NEXT_LEFT - 1);
+    draw_border(TETRIS_PIECE_SIZE);
 }
 
 /** Overlay the landing hint on otherwise empty cells. */
@@ -185,23 +276,14 @@ static void draw_board(void)
                 continue;
             }
             move_cursor((unsigned)(FIELD_TOP + y), (unsigned)(2 + 2 * x));
-            uint8_t style = 0;
             do {
                 uint8_t color = row[x];
                 int first = x;
-                uint8_t next_style = color == GHOST_CELL ? 0 : color;
                 do {
                     shown[y][x++] = color;
                 } while (x < TETRIS_WIDTH && shown[y][x] != color && row[x] == color);
-                if (style != next_style) {
-                    console_write(backgrounds[next_style]);
-                    style = next_style;
-                }
-                write_cells(x - first, color);
+                paint_cells(x - first, color);
             } while (x < TETRIS_WIDTH && row[x] != shown[y][x]);
-            if (style != 0) {
-                console_write(backgrounds[0]);
-            }
         }
     }
 }
@@ -218,10 +300,10 @@ static void draw_quad_notice(void)
         return;
     }
     move_cursor(QUAD_ROW, QUAD_COLUMN);
+    style(PEACH, BASE);
     if (visible) {
-        console_write("\033[1;33m4 LINES +");
+        console_write("4 LINES +");
         write_number(TETRIS_QUAD_SCORE);
-        console_write("\033[0m");
     } else {
         console_write("\033[K");
     }
@@ -234,14 +316,7 @@ static void draw_next(void)
     for (int y = 0; y < TETRIS_PIECE_SIZE; ++y) {
         move_cursor((unsigned)(NEXT_TOP + y), NEXT_LEFT);
         for (int x = 0; x < TETRIS_PIECE_SIZE; ++x) {
-            uint8_t color = tetris_next_cell(&session, x, y);
-            if (color != 0) {
-                console_write(backgrounds[color]);
-            }
-            write_cells(1, color);
-            if (color != 0) {
-                console_write(backgrounds[0]);
-            }
+            paint_cells(1, tetris_next_cell(&session, x, y));
         }
     }
     shown_next = tetris_next_color(&session);
@@ -251,10 +326,12 @@ static void draw_next(void)
 static void draw_status(void)
 {
     move_cursor(1, DROP_COLUMN);
+    style(PEACH, BASE);
     console_write("\033[KDrop: ");
     write_number(tetris_interval(&session));
     console_write(" ms");
     move_cursor(2, 1);
+    style(INK, BASE);
     console_write("\033[2KScore ");
     write_number(session.score);
     console_write(" L");
@@ -324,6 +401,7 @@ static void handle_key(char key)
     }
     key = filter_key(key);
     if (key == 'q' || key == 'Q') {
+        reset_style();
         session_active = false;
         return;
     }
@@ -401,7 +479,10 @@ static void draw_game(void)
     draw_quad_notice();
     if (session.lost) {
         move_cursor(RESULT_ROW, 1);
-        console_write("\033[2K\033[31mGame over.\033[0m  Q - menu");
+        style(PINK, BASE);
+        console_write("\033[2KGame over.");
+        style(INK, BASE);
+        console_write("  Q - menu");
     }
     move_cursor(RESULT_ROW, FRAME_WIDTH);
 

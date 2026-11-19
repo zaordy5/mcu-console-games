@@ -8,6 +8,15 @@
 #include <stdio.h>
 #include <string.h>
 
+/** Retrowave background of an empty board cell. */
+#define FIELD_BG "\033[48;2;36;22;56m"
+/** Next background on a new board, 0xC2D9FF for the I piece. */
+#define I_BG "\033[48;2;194;217;255m"
+/** Background of the first active piece, 0xFF85C7 for the T piece. */
+#define T_BG "\033[48;2;255;133;199m"
+/** Reset required before the shared menu takes over. */
+#define RESET_STYLE "\033[0m"
+
 /** Captured terminal bytes for one action or frame. */
 static char output[4096];
 /** Number of captured bytes before the terminating NUL. */
@@ -54,6 +63,8 @@ static void test_input_boundaries(void)
     assert(used == 0 && !tetris_game.finished());
     type_keys("\033Q");
     assert(tetris_game.finished());
+    assert(strcmp(output, RESET_STYLE) == 0);
+    clear_output();
     tetris_game.tick(UINT32_MAX);
     tetris_game.draw();
     assert(used == 0);
@@ -86,9 +97,13 @@ static void test_game_callbacks(void)
     assert(strstr(output, "Score 0 L1 Ln0") && strstr(output, "Drop: 850 ms"));
     assert(strstr(output, "A/D or Left/Right"));
     assert(strstr(output, "W/Up") && strstr(output, "S/Down"));
-    assert(strstr(output, "\033[30;45m[][][]"));
+    assert(strstr(output, "\033[38;2;255;133;199m\033[48;2;24;15;39m\033[2J\033[HTETRIS"));
+    assert(strstr(output, "\033[48;2;112;63;162m        "));
+    assert(strstr(output, "\033[48;2;220;84;155m        "));
+    assert(strstr(output, "\033[48;2;255;172;123m        "));
+    assert(strstr(output, T_BG));
     assert(strstr(output, "Next block:"));
-    assert(strstr(output, "\033[7;30H\033[30;46m[]"));
+    assert(strstr(output, I_BG "[][][][]"));
 
     clear_output();
     tetris_game.tick(849);
@@ -142,7 +157,8 @@ static void test_result_and_restart(void)
         clear_output();
         tetris_game.key('s');
         tetris_game.draw();
-        if (strstr(output, "\033[31mGame over.\033[0m  Q - menu")) {
+        if (strstr(output, "\033[2KGame over.")) {
+            assert(strstr(output, "\033[38;2;255;133;199m"));
             result_shown = true;
             break;
         }
@@ -155,7 +171,9 @@ static void test_result_and_restart(void)
     assert(used == 0 && !tetris_game.finished());
     tetris_game.key('Q');
     assert(tetris_game.finished());
+    assert(strcmp(output, RESET_STYLE) == 0);
 
+    clear_output();
     tetris_game.start(GAME_NORMAL);
     tetris_game.draw();
     assert(!tetris_game.finished() && strcmp(output, initial) == 0);
@@ -279,7 +297,7 @@ static void test_preview_update(void)
     }
     tetris_game.key('S');
     tetris_game.draw();
-    assert(strstr(output, "\033[6;30H") && strstr(output, "\033[30;46m[][][][]"));
+    assert(strstr(output, "\033[6;30H") && strstr(output, I_BG "[][][][]"));
     puts("PASS Game API: next piece updates when the earlier preview spawns");
 }
 
@@ -291,13 +309,33 @@ static void test_ghost_and_space(void)
     tetris_game.draw();
     assert(strstr(output, "Space"));
     assert(strstr(output, "\033[21;10H......"));
+    assert(strstr(output, "\033[38;2;205;170;209m"));
     clear_output();
     tetris_game.key(' ');
     tetris_game.draw();
-    assert(strstr(output, "\033[21;10H\033[30;45m[][][]"));
+    assert(strstr(output, "\033[21;10H[][][]"));
+    assert(strstr(output, T_BG));
     assert(strstr(output, "\033[6;30H"));
     assert(!strstr(output, "4 LINES"));
     puts("PASS Game API: Space locks on the ghost and refreshes the preview");
+}
+
+/** Check the background of the cells vacated by the active figure and its ghost. */
+static void test_move_restores_background(void)
+{
+    tetris_game.start(GAME_EASY);
+    clear_output();
+    tetris_game.draw();
+    clear_output();
+    tetris_game.key('A');
+    tetris_game.draw();
+    assert(strstr(output, "\033[5;14H" FIELD_BG "  "));
+    assert(strstr(output, "\033[21;14H  "));
+    assert(!strstr(output, "\033[2J"));
+    clear_output();
+    tetris_game.key('q');
+    assert(strcmp(output, RESET_STYLE) == 0);
+    puts("PASS retrowave: incremental move restores field background and Q resets ANSI");
 }
 
 /** Run all Game callback checks. */
@@ -310,6 +348,7 @@ int main(void)
     test_rotation_repeat();
     test_preview_update();
     test_ghost_and_space();
+    test_move_restores_background();
     test_level_replay();
     return 0;
 }

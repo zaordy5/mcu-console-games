@@ -59,6 +59,7 @@ static void new_match(Pong *pong)
 {
     pong->player_score = 0;
     pong->cpu_score = 0;
+    pong->last_point = PONG_NO_POINT;
     serve(pong, 1);
 }
 
@@ -90,13 +91,17 @@ bool pong_next_level(Pong *pong)
 static void score_point(Pong *pong)
 {
     if (pong->dx > 0) {
+        pong->last_point = PONG_PLAYER_POINT;
         if (++pong->player_score == PONG_WIN_SCORE) {
             pong->phase = PONG_WON;
             return;
         }
-    } else if (++pong->cpu_score == PONG_WIN_SCORE) {
-        pong->phase = PONG_LOST;
-        return;
+    } else {
+        pong->last_point = PONG_CPU_POINT;
+        if (++pong->cpu_score == PONG_WIN_SCORE) {
+            pong->phase = PONG_LOST;
+            return;
+        }
     }
     serve(pong, (pong->player_score + pong->cpu_score) % 2 ? -1 : 1);
 }

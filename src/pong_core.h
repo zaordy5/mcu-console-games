@@ -26,6 +26,9 @@ typedef enum { PONG_EASY, PONG_NORMAL, PONG_HARD } PongDifficulty;
 /** Match phases visible to the console. */
 typedef enum { PONG_SERVE, PONG_RALLY, PONG_WON, PONG_LOST } PongPhase;
 
+/** Side that scored most recently in the current match. */
+typedef enum { PONG_NO_POINT, PONG_PLAYER_POINT, PONG_CPU_POINT } PongPoint;
+
 /** Complete match state in terminal cells and milliseconds. */
 typedef struct {
     int player_y;           /**< Top row of the player's paddle. */
@@ -40,6 +43,7 @@ typedef struct {
     uint8_t cpu_score;      /**< Points won in this match by the CPU. */
     uint8_t level;          /**< Current level, beginning at one. */
     PongDifficulty difficulty; /**< Fixed difficulty for this session. */
+    PongPoint last_point;   /**< Scorer shown during the next serve. */
     PongPhase phase;        /**< Serve, rally, or final result. */
 } Pong;
 

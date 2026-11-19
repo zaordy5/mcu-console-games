@@ -34,14 +34,19 @@ static void test_serve_marker(void)
 {
     pong_game.start(GAME_EASY);
     draw_frame();
-    assert(strstr(output, "Serving...  -> CPU"));
+    assert(strstr(output, "Serve -> CPU"));
     pong_game.tick(2310);
     draw_frame();
-    assert(strstr(output, "You 1:0 CPU") && strstr(output, "Serving...  <- You"));
-    assert(strstr(output, "\033[12;22H\033[1;32mO"));
+    assert(strstr(output, "\033[1;36m1\033[0m : \033[1;35m0") && strstr(output, "Serve <- YOU"));
+    assert(strstr(output, "YOUR POINT"));
+    assert(strstr(output, "\033[12;22H\033[1;97mO"));
     pong_game.tick(690);
     draw_frame();
-    assert(strstr(output, "\033[12;22H."));
+    assert(strstr(output, "\033[12;22H\033[90m."));
+    assert(!strstr(output, "YOUR POINT"));
+    pong_game.tick(1710);
+    draw_frame();
+    assert(strstr(output, "CPU POINT") && strstr(output, "Serve -> CPU"));
 }
 
 /** Check colors, incremental redraw, match result, Q and session reset. */
@@ -49,31 +54,34 @@ int main(void)
 {
     pong_game.start(GAME_EASY);
     draw_frame();
-    assert(strstr(output, "You 0:0 CPU") && strstr(output, "L1  Easy"));
-    assert(strstr(output, "W/S - move  Q - menu  First to 5"));
+    assert(strstr(output, "\033[1;36m0\033[0m : \033[1;35m0") && strstr(output, "L1  Easy"));
+    assert(strstr(output, "\033[01;13H\033[2K\033[1;36mYOU"));
+    assert(strstr(output, "First to 5") && strstr(output, "W/S  Move"));
+    assert(strstr(output, "\033[90m+"));
     assert(strstr(output, "|\033[20C.\033[19C|\r\n|\033[40C|\r\n"));
-    assert(written < 700);
+    assert(written < 760);
     printf("Pong first frame: %zu UART bytes\n", written);
-    assert(strstr(output, "\033[1;36m|") && strstr(output, "\033[1;35m|"));
-    assert(strstr(output, "\033[1;32mO") && strstr(output, "\033[1;33mPong"));
+    assert(strstr(output, "\033[36;106m|") && strstr(output, "\033[35;105m|"));
+    assert(strstr(output, "\033[1;97mO") && strstr(output, "\033[1mPONG"));
 
     draw_frame();
     assert(written == 0);
     pong_game.key('W');
     draw_frame();
-    assert(strstr(output, "\033[08;02H\033[1;36m|"));
+    assert(strstr(output, "\033[08;02H\033[36;106m|"));
     assert(!strstr(output, "\033[2J"));
     pong_game.key('s');
     draw_frame();
-    assert(strstr(output, "\033[13;02H\033[1;36m|"));
+    assert(strstr(output, "\033[13;02H\033[36;106m|"));
     pong_game.tick(22000);
     draw_frame();
-    assert(strstr(output, "You win!") && strstr(output, "N - next level"));
+    assert(strstr(output, "YOU WIN!") && strstr(output, "N  Next level"));
+    assert(strstr(output, "Final \033[1;36m5\033[0m : \033[1;35m4"));
     assert(!pong_game.finished());
     pong_game.key('n');
     draw_frame();
-    assert(strstr(output, "You 0:0 CPU") && strstr(output, "L2  Easy"));
-    assert(strstr(output, "Serving..."));
+    assert(strstr(output, "\033[1;36m0\033[0m : \033[1;35m0") && strstr(output, "L2  Easy"));
+    assert(strstr(output, "Serve -> CPU") && strstr(output, "W/S  Move"));
     pong_game.key('q');
     assert(pong_game.finished());
 
@@ -86,7 +94,8 @@ int main(void)
     }
     pong_game.tick(60000);
     draw_frame();
-    assert(strstr(output, "CPU wins!"));
+    assert(strstr(output, "CPU WINS!") && strstr(output, "Q  Menu"));
+    assert(!strstr(output, "N  Next level") && !strstr(output, "W/S  Move"));
     assert(!pong_game.finished());
     pong_game.key('N');
     draw_frame();
@@ -96,8 +105,8 @@ int main(void)
 
     pong_game.start(GAME_NORMAL);
     draw_frame();
-    assert(strstr(output, "You 0:0 CPU") && strstr(output, "L1  Normal"));
-    assert(strstr(output, "Serving...") && !pong_game.finished());
+    assert(strstr(output, "\033[1;36m0\033[0m : \033[1;35m0") && strstr(output, "L1  Normal"));
+    assert(strstr(output, "Serve -> CPU") && !pong_game.finished());
     test_serve_marker();
     puts("Pong Game callbacks and ANSI checks passed");
 }

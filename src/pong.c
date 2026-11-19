@@ -10,6 +10,18 @@
 #define FIELD_COLUMN 2
 /** Terminal row for controls and match results. */
 #define STATUS_ROW (FIELD_ROW + PONG_HEIGHT + 1)
+/** Terminal row for the active keys. */
+#define CONTROLS_ROW (STATUS_ROW + 1)
+/** Left edge of the centered 17-cell scoreboard. */
+#define SCORE_COLUMN ((PONG_WIDTH + 2 - 17) / 2 + 1)
+/** Accent for the player's score and point notice. */
+#define PLAYER_COLOR "\033[1;36m"
+/** Accent for the computer's score and point notice. */
+#define CPU_COLOR "\033[1;35m"
+/** Dim color for the static court and its markings. */
+#define COURT_COLOR "\033[90m"
+/** Return to the terminal's default colors. */
+#define RESET_COLOR "\033[0m"
 
 /** Current session controlled by the Game callbacks. */
 static Pong match;
@@ -37,15 +49,30 @@ static void write_number(unsigned value)
     console_write(digits + (value < 10));
 }
 
-/** Paint the score line with both scores, current level and selected difficulty. */
+/** Write the score with the same accents as the two paddles. */
+static void write_score(void)
+{
+    console_write(PLAYER_COLOR);
+    write_number(match.player_score);
+    console_write(RESET_COLOR " : " CPU_COLOR);
+    write_number(match.cpu_score);
+    console_write(RESET_COLOR);
+}
+
+/** Paint the centered score independently of the match settings. */
 static void draw_score(void)
 {
-    cursor_at(1, 1);
-    console_write("\033[2K\033[1;33mPong  You ");
-    write_number(match.player_score);
-    console_write(":");
-    write_number(match.cpu_score);
-    console_write(" CPU\033[0m  L");
+    cursor_at(1, SCORE_COLUMN);
+    console_write("\033[2K" PLAYER_COLOR "YOU   " RESET_COLOR);
+    write_score();
+    console_write(CPU_COLOR "   CPU" RESET_COLOR);
+}
+
+/** Paint the current level, difficulty and target score. */
+static void draw_settings(void)
+{
+    cursor_at(2, 3);
+    console_write("\033[2K\033[1mPONG" RESET_COLOR "  |  L");
     write_number(match.level);
     console_write("  ");
     switch (match.difficulty) {
@@ -53,6 +80,8 @@ static void draw_score(void)
     case PONG_HARD: console_write("Hard"); break;
     default: console_write("Normal"); break;
     }
+    console_write("  |  First to ");
+    write_number(PONG_WIN_SCORE);
 }
 
 /** Skip cleared cells in the current terminal row without transmitting spaces. */
@@ -88,9 +117,7 @@ static void draw_border(void)
 /** Clear the screen and draw the fixed court and help text. */
 static void draw_field(void)
 {
-    console_write("\033[0m\033[2J\033[H\r\nW/S - move  Q - menu  First to ");
-    write_number(PONG_WIN_SCORE);
-    console_write("\r\n");
+    console_write(RESET_COLOR "\033[2J\033[H\r\n\r\n" COURT_COLOR);
     draw_border();
     for (int y = 0; y < PONG_HEIGHT; ++y) {
         console_write("|");
@@ -104,30 +131,55 @@ static void draw_field(void)
         console_write("|\r\n");
     }
     draw_border();
+    console_write(RESET_COLOR);
 }
 
-/** Show serve, controls after victory or the final loss. */
+/** Show the point winner and next serve, or the final result. */
 static void draw_status(void)
 {
     cursor_at(STATUS_ROW, 1);
     console_write("\033[2K");
     switch (match.phase) {
     case PONG_SERVE:
-        console_write(match.dx > 0 ? "Serving...  -> CPU" : "Serving...  <- You");
+        if (match.last_point == PONG_PLAYER_POINT) {
+            console_write(PLAYER_COLOR "YOUR POINT" RESET_COLOR "  |  ");
+        } else if (match.last_point == PONG_CPU_POINT) {
+            console_write(CPU_COLOR "CPU POINT" RESET_COLOR "  |  ");
+        }
+        console_write(match.dx > 0 ? "Serve -> CPU" : "Serve <- YOU");
         break;
     case PONG_WON:
-        if (match.level < PONG_MAX_LEVEL) {
-            console_write("\033[1;32mYou win!\033[0m  N - next level  Q - menu");
-        } else {
-            console_write("\033[1;32mYou win!\033[0m  Final level  Q - menu");
-        }
+        console_write("\033[1;32mYOU WIN!" RESET_COLOR "  |  Final ");
+        write_score();
         break;
     case PONG_LOST:
-        console_write("\033[1;31mCPU wins!\033[0m  Q - menu");
+        console_write("\033[1;31mCPU WINS!" RESET_COLOR "  |  Final ");
+        write_score();
         break;
     case PONG_RALLY:
         break;
     }
+}
+
+/** Show only the controls available in the current match phase. */
+static void draw_controls(void)
+{
+    cursor_at(CONTROLS_ROW, 1);
+    console_write("\033[2K");
+    if (match.phase == PONG_LOST) {
+        console_write("Q  Menu");
+    } else if (match.phase == PONG_WON) {
+        console_write(match.level < PONG_MAX_LEVEL ? "N  Next level   |   Q  Menu"
+                                                   : "Final level    |   Q  Menu");
+    } else {
+        console_write("W/S  Move      |   Q  Menu");
+    }
+}
+
+/** Return whether the controls show a finished match. */
+static bool has_result(PongPhase phase)
+{
+    return phase == PONG_WON || phase == PONG_LOST;
 }
 
 /** Update a paddle, erasing only the cells that its movement left empty. */
@@ -186,25 +238,31 @@ static void draw(void)
     if (fresh_screen) {
         draw_field();
     }
-    if (fresh_screen || drawn.player_score != match.player_score ||
-        drawn.cpu_score != match.cpu_score || drawn.level != match.level) {
+    bool score_changed = drawn.player_score != match.player_score ||
+                         drawn.cpu_score != match.cpu_score;
+    if (fresh_screen || score_changed || drawn.level != match.level) {
         draw_score();
     }
-    draw_paddle(FIELD_COLUMN, match.player_y, drawn.player_y, "\033[1;36m|\033[0m");
-    draw_paddle(FIELD_COLUMN + PONG_WIDTH - 1, match.cpu_y, drawn.cpu_y, "\033[1;35m|\033[0m");
+    if (fresh_screen || drawn.level != match.level) {
+        draw_settings();
+    }
+    draw_paddle(FIELD_COLUMN, match.player_y, drawn.player_y, "\033[36;106m|" RESET_COLOR);
+    draw_paddle(FIELD_COLUMN + PONG_WIDTH - 1, match.cpu_y, drawn.cpu_y, "\033[35;105m|" RESET_COLOR);
 
     if (fresh_screen || drawn.ball_x != match.ball_x || drawn.ball_y != match.ball_y) {
         if (!fresh_screen) {
             cursor_at(FIELD_ROW + drawn.ball_y, FIELD_COLUMN + drawn.ball_x);
-            char tile[] = {court_tile(drawn.ball_x, drawn.ball_y), '\0'};
-            console_write(tile);
+            console_write(court_tile(drawn.ball_x, drawn.ball_y) == '.' ? COURT_COLOR "." RESET_COLOR : " ");
         }
         cursor_at(FIELD_ROW + match.ball_y, FIELD_COLUMN + match.ball_x);
-        console_write("\033[1;32mO\033[0m");
+        console_write("\033[1;97mO" RESET_COLOR);
     }
     if (fresh_screen || drawn.phase != match.phase || drawn.level != match.level ||
-        (match.phase == PONG_SERVE && drawn.dx != match.dx)) {
+        (match.phase == PONG_SERVE && score_changed)) {
         draw_status();
+    }
+    if (fresh_screen || has_result(drawn.phase) != has_result(match.phase)) {
+        draw_controls();
     }
     drawn = match;
     fresh_screen = false;

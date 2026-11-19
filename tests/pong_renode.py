@@ -11,17 +11,18 @@ def verify(trace):
     """Require the input effects, match results and ANSI colors in the UART log."""
     start = b"MCU Console Games"
     choose = b"Choose difficulty"
+    zero = b"\x1b[1;36m0\x1b[0m : \x1b[1;35m0"
     events = (
-        start, choose,
-        b"You 0:0 CPU\x1b[0m  L1  Easy", b"Serving...  -> CPU",
-        b"\x1b[08;02H\x1b[1;36m|",
-        b"\x1b[13;02H\x1b[1;36m|",
-        b"Serving...  <- You", b"You 5:4 CPU", b"You win!", b"N - next level",
-        b"You 0:0 CPU\x1b[0m  L2  Easy", start,
-        choose, b"You 0:0 CPU\x1b[0m  L1  Hard", start,
+        start, choose, zero, b"L1  Easy", b"Serve -> CPU",
+        b"\x1b[08;02H\x1b[36;106m|",
+        b"\x1b[13;02H\x1b[36;106m|",
+        b"YOUR POINT", b"Serve <- YOU", b"CPU POINT",
+        b"YOU WIN!", b"Final \x1b[1;36m5\x1b[0m : \x1b[1;35m4", b"N  Next level",
+        zero, b"L2  Easy", b"W/S  Move", start,
+        choose, zero, b"L1  Hard", start,
         choose, start,
-        choose, b"You 0:0 CPU\x1b[0m  L1  Normal",
-        b"You 0:5 CPU", b"CPU wins!", start,
+        choose, zero, b"L1  Normal",
+        b"CPU WINS!", b"Final \x1b[1;36m0\x1b[0m : \x1b[1;35m5", start,
     )
     position = 0
     for event in events:
@@ -30,7 +31,7 @@ def verify(trace):
             raise ValueError(f"missing {event!r} after byte {position}")
         position = found + len(event)
 
-    for color in (b"\x1b[1;32mO", b"\x1b[1;36m|", b"\x1b[1;35m|", b"\x1b[1;33mPong"):
+    for color in (b"\x1b[1;97mO", b"\x1b[36;106m|", b"\x1b[35;105m|", b"\x1b[90m+"):
         if color not in trace:
             raise ValueError(f"missing ANSI color {color!r}")
     print(f"Pong USART2: {len(events)} ordered events, 4 ANSI colors, {len(trace)} bytes")

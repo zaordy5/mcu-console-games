@@ -28,8 +28,10 @@ static const char *const rgb[] = {
     [SUNSET_PINK] = "220;84;155", [SUNSET_PEACH] = "255;172;123"
 };
 
-/** Active foreground and background written to the terminal. */
-static Color foreground = NO_COLOR, background = NO_COLOR;
+/** Last ANSI foreground color written to the terminal. */
+static Color foreground = NO_COLOR;
+/** Last ANSI background color written to the terminal. */
+static Color background = NO_COLOR;
 
 /** Current session controlled by the Game callbacks. */
 static Pong match;

@@ -1,3 +1,6 @@
+/** @file
+ *  Session and rendering types for Minesweeper.
+ */
 #pragma once
 
 #include "game.h"

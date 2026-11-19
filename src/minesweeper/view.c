@@ -1,3 +1,6 @@
+/** @file
+ *  ANSI rendering for Minesweeper screens.
+ */
 #include "view.h"
 
 /** Fixed layout for all three fields in a 64 by 20 terminal. */
@@ -50,13 +53,17 @@ static struct {
     unsigned seconds;                /**< Last clock value printed. */
     int left;                        /**< Last remaining-mine count printed. */
     unsigned opened;                 /**< Last progress count printed. */
-    unsigned clue, flags, targets;   /**< Last chord feedback contents. */
+    unsigned clue;                  /**< Last clue shown in chord feedback. */
+    unsigned flags;                 /**< Last adjacent flag count shown in chord feedback. */
+    unsigned targets;               /**< Last target count shown in chord feedback. */
     unsigned flash_ms;               /**< Reveal feedback time still visible. */
     bool logical;                   /**< Previously painted mode. */
 } painted;
 
-/** Styles active within one draw operation. */
-static Color foreground = NO_COLOR, background = NO_COLOR;
+/** Last ANSI foreground color written to the terminal. */
+static Color foreground = NO_COLOR;
+/** Last ANSI background color written to the terminal. */
+static Color background = NO_COLOR;
 
 /** Write an unsigned decimal value without a hosted C library. */
 static void write_number(uint32_t value)

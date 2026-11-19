@@ -1,3 +1,6 @@
+/** @file
+ *  Board state and cell operations for Minesweeper.
+ */
 #pragma once
 
 #include <stdbool.h>

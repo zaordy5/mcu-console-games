@@ -1,3 +1,6 @@
+/** @file
+ *  Minesweeper session, input and campaign controller.
+ */
 #include "minesweeper.h"
 #include "view.h"
 

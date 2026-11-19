@@ -1,0 +1,60 @@
+name: Firmware menu on STM32F4
+on:
+  pull_request:
+    branches: [develop]
+  push:
+    branches: [develop]
+permissions:
+  contents: read
+
+jobs:
+  uart:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install Renode 1.17.0
+        working-directory: ${{ runner.temp }}
+        run: |
+          curl -fLsS --retry 2 -o renode.tar.gz 'https://github.com/renode/renode/releases/download/v1.17.0/renode-1.17.0.linux-portable.tar.gz'
+          echo '4ba7c68b59e2447f188ef4b4b112fcccd2802582c460beedceb63b84e5605a5f  renode.tar.gz' | sha256sum --check
+          mkdir renode
+          tar -xzf renode.tar.gz -C renode --strip-components=1
+          ./renode/renode --version
+      - name: Compile firmware
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends gcc-arm-none-eabi libnewlib-dev xterm xvfb imagemagick xauth
+          cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE=cmake/arm-gcc.cmake
+          cmake --build build --verbose
+      - name: Test menu input on Renode
+        run: |
+          { echo "\$bin=@$PWD/build/games.elf"; tail -n +4 emulation/stm32f4.resc; } > "$RUNNER_TEMP/menu.resc"
+          args=()
+          for key in 49 50 51; do
+            for byte in "$key" 113; do
+              args+=(-e "sysbus.usart2 WriteChar $byte" -e 'emulation RunFor "00:00:00.03"')
+            done
+          done
+          timeout 90s "$RUNNER_TEMP/renode/renode" --disable-gui --hide-analyzers --plain "$RUNNER_TEMP/menu.resc" \
+            -e "sysbus.usart2 CreateFileBackend @$PWD/menu.uart true" -e 'emulation RunFor "00:00:00.1"' "${args[@]}" -e quit
+          python3 - <<'PY'
+          from pathlib import Path
+          raw = Path("menu.uart").read_bytes()
+          frames = raw.split(b"\x1b[2J\x1b[H")[1:]
+          labels = [b"MCU Console Games", b"Tetris preview", b"MCU Console Games", b"Minesweeper preview",
+                    b"MCU Console Games", b"Pong preview", b"MCU Console Games"]
+          assert len(frames) == len(labels), raw
+          for frame, label in zip(frames, labels):
+              assert label in frame and b"\x1b[0m" in frame, frame
+          PY
+          xvfb-run -a sh -ec 'xterm -geometry 50x12+0+0 -fa Monospace -fs 14 -e sh -c "cat menu.uart; sleep 8" & sleep 2; import -window root -crop 510x255+0+0 menu.png'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: firmware-menu
+          path: |
+            build/games.elf
+            menu.uart
+            menu.png

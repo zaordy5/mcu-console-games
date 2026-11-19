@@ -7,6 +7,8 @@ import shutil
 import subprocess
 from tempfile import TemporaryDirectory
 
+from renode_paths import monitor_path
+
 
 # A launcher frame begins with this exact reset, background and clear.
 LAUNCHER = b"\x1b[0m\x1b[48;2;24;15;39m\x1b[2J\x1b[H"
@@ -74,12 +76,12 @@ def main():
         lines = profile.read_text(encoding="utf-8").splitlines(keepends=True)
         setup = "".join(line for line in lines if not line.startswith("$bin?="))
         script = work / "games.resc"
-        script.write_text(f"$bin=@{elf}\n" + setup, encoding="utf-8")
+        script.write_text(f"$bin={monitor_path(elf)}\n" + setup, encoding="utf-8")
         trace = work / "menu.uart"
         command = [
-            args.renode, "--disable-gui", "--hide-analyzers", "--plain", "--port", "-1", str(script),
-            "-e", "sysbus.cpu PerformanceInMips 16",
-            "-e", f"sysbus.usart2 CreateFileBackend @{trace} true",
+            args.renode, "--disable-gui", "--hide-analyzers", "--plain", "--port", "-1",
+            "-e", f"include {monitor_path(script)}",
+            "-e", f"sysbus.usart2 CreateFileBackend {monitor_path(trace)} true",
             "-e", 'emulation RunFor "00:00:00.35"',
         ]
         # Open all games, make a first Minesweeper move, save, and resume via U.

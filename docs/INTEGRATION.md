@@ -1,16 +1,40 @@
-# Сборка и проверка общего меню
+# Сборка, запуск и проверка
 
-Для STM32F407 нужны CMake и `arm-none-eabi-gcc`. Для проверки в симуляторе
-используйте Renode 1.17.0. В терминале USART2 установите размер не меньше
-80 × 24 и включите ANSI RGB.
+## Инструменты
+
+Нужны Git, CMake 3.16+, Arm GNU Toolchain (`arm-none-eabi-gcc`, `arm-none-eabi-nm` и `arm-none-eabi-size` в `PATH`) и генератор сборки GNU Make или Ninja. Для автоматических проверок используйте Python 3.9+, для симуляции — Renode 1.17.0, для документации — Doxygen. Для отладки нужен GDB с поддержкой Arm.
+
+На Debian или Ubuntu инструменты сборки можно установить так:
+
+```sh
+sudo apt install git cmake make gcc-arm-none-eabi libnewlib-dev python3 doxygen
+```
+
+Для Windows установите Arm GNU Toolchain, CMake, Ninja и Python, затем проверьте их доступность из PowerShell. [Arm GNU Toolchain](https://developer.arm.com/downloads/-/arm-gnu-toolchain-downloads) · [Renode 1.17.0](https://github.com/renode/renode/releases/tag/v1.17.0)
+
+## Сборка из исходников
+
+Клонируйте репозиторий после получения доступа или откройте переданную копию. Для проверки определённой ревизии переключитесь на SHA из `commit.txt`. При сборке из ZIP возьмите SHA из описи комплекта.
+
+```sh
+git clone https://github.com/zaordy5/mcu-console-games.git
+cd mcu-console-games
+```
+
+Остальные команды выполняются из корня проекта. В ZIP без истории Git пропустите `git rev-parse HEAD`.
 
 ```sh
 git rev-parse HEAD
 cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE=cmake/arm-gcc.cmake
 cmake --build build --verbose
+arm-none-eabi-size build/games.elf
 ```
 
-В Renode Monitor укажите абсолютные пути к файлам.
+Для Ninja добавьте `-G Ninja` на шаге конфигурации. При смене генератора используйте пустой каталог сборки. Готовая прошивка — `build/games.elf`.
+
+## Запуск в Renode
+
+В Monitor укажите абсолютные пути к ELF и профилю. В примере используется папка `C:/mcu-games`.
 
 ```text
 set bin @C:/mcu-games/build/games.elf
@@ -18,15 +42,13 @@ include @C:/mcu-games/emulation/stm32f4.resc
 start
 ```
 
-`1` открывает Тетрис, `2` — Сапёр, `3` — Пинг-понг. На втором экране
-`1/2/3` выбирают Easy, Normal или Hard, а `Q` отменяет выбор. Enter не нужен.
-`Q` в запущенной игре возвращает в главное меню. Для продолжения сохранённой
-партии Сапёра снова откройте Сапёр и нажмите `U` на экране настройки поля.
+В архиве CI профиль `games.resc` уже указывает на соседний `games.elf`. Распакуйте их в одну папку, выполните `include @C:/mcu-games/games.resc`, затем `start`. В путях Monitor пробелы экранируются как `\ `.
 
-Для автоматических проверок нужен Python 3.9 или новее. Запускайте команды
-из корня репозитория. Проверке SysTick нужны `arm-none-eabi-nm` в `PATH`
-и `games.elf` с сохранённой таблицей символов. Обычная сборка выше
-сохраняет её.
+Перейдите в окно USART2. Для общего меню нужен терминал с ANSI RGB и областью 80 × 24 символа. Нажмите `1` для Тетриса, `2` для Сапёра или `3` для пинг-понга. На втором экране те же цифры выбирают Easy, Normal и Hard. `Q` отменяет выбор или завершает сеанс игры. Для восстановления партии Сапёра откройте его снова и нажмите `U` на экране настройки поля.
+
+## Автопроверки
+
+Из корня проекта запустите команды:
 
 ```sh
 python3 tests/systick_renode.py build/games.elf
@@ -35,35 +57,28 @@ python3 tests/tetris_renode.py --elf build/games.elf --uart-log build/tetris.uar
 python3 tests/pong_renode.py build/games.elf
 ```
 
-В Windows команды можно запускать через `py -3`. Пример для Тетриса:
+В Windows замените `python3` на `py -3`. Если Renode отсутствует в `PATH`, добавьте к команде теста `--renode "C:/path/to/renode.exe"`. SysTick ищет миллисекундный счётчик через `arm-none-eabi-nm`, поэтому передавайте ELF с таблицей символов. Обычная сборка сохраняет её.
 
-```powershell
-py -3 tests/tetris_renode.py --elf build/games.elf --uart-log build/tetris.uart
-```
+Проверка SysTick ожидает 1000 мс за виртуальную секунду. Сценарий меню за один сеанс открывает три игры, проверяет возвраты, повторный вход в Тетрис и возобновление Сапёра. Сценарии Тетриса и Pong проверяют игровые события по USART2. На Linux CI запускает тесты с пробелами в `TMPDIR`. Команды хост-тестов C приведены в [конфигурации CI](../.github/workflows/firmware.yml).
 
-Если Renode нет в `PATH`, добавьте к любой из команд тестирования
-`--renode "C:/path/to/renode.exe"`.
+## Отладка в Renode
 
-Проверка SysTick сверяет 1000 тиков за секунду виртуального времени.
-Общая проверка выполняет один сеанс USART2. Она открывает три игры, проверяет
-перезапуск Тетриса, сохранение и продолжение Сапёра, отмену выбора сложности
-и совпадение главного меню до и после каждой игры. GitHub Actions собирает ELF
-из SHA, записанного в `commit.txt`, и сохраняет его вместе с логами и двумя
-снимками в артефакте `firmware-menu`.
+Для пошаговой отладки используйте ELF и исходники одной ревизии. Откройте [сценарий GDB](VIDEO.md#ролик-2-пошаговая-отладка-сапёра-в-gdb). В нём указаны команды подключения и способ проверить изменение числа закрытых безопасных клеток Сапёра.
 
 ## Документация кода
-
-Из корня репозитория запустите Doxygen:
 
 ```sh
 doxygen Doxyfile
 ```
 
-Точка входа — `build/doxygen/html/index.html`. Конфигурация обрабатывает
-C-исходники и заголовки из `src` и `include`, включая статические функции всех
-трёх игр. В общий справочник попадают и символы без комментариев. Для аудита
-комментариев прогоните тот же конфиг с отключённым `EXTRACT_ALL`:
+Откройте `build/doxygen/html/index.html`. Конфигурация включает C-исходники и заголовки в `src`, `include` и `tests`, в том числе статические функции. Чтобы проверить охват комментариев, выполните в POSIX-оболочке:
 
 ```sh
-{ cat Doxyfile; printf '\nEXTRACT_ALL = NO\nOUTPUT_DIRECTORY = build/doxygen-audit\n'; } | doxygen -
+{
+  cat Doxyfile
+  printf '\nEXTRACT_ALL = NO\nOUTPUT_DIRECTORY = build/doxygen-audit\n'
+  printf 'WARN_AS_ERROR = YES\n'
+} | doxygen -
 ```
+
+CI сравнивает индексы полного и строгого прогонов. В артефакте `doxygen-report` лежат HTML, XML, лог и SHA исходников. Сборка, кадры и журналы USART2 находятся в `firmware-menu`. [Опись сдачи](SUBMISSION.md)

@@ -1,3 +1,6 @@
+/** @file
+ *  Shared layout format and input parsing interface.
+ */
 #pragma once
 
 #include "board.h"

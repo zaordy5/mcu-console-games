@@ -6,6 +6,8 @@ import shutil
 import subprocess
 from tempfile import TemporaryDirectory
 
+from renode_paths import monitor_path
+
 
 def verify(trace):
     """Require the input effects, match results and ANSI colors in the UART log."""
@@ -70,13 +72,13 @@ def main():
         script = work / "pong.resc"
         profile_lines = profile.read_text(encoding="utf-8").splitlines(keepends=True)
         board_setup = "".join(line for line in profile_lines if not line.startswith("$bin?="))
-        script.write_text(f"$bin=@{elf}\n" + board_setup, encoding="utf-8")
+        script.write_text(f"$bin={monitor_path(elf)}\n" + board_setup, encoding="utf-8")
         trace = work / "pong.uart"
         command = [
             args.renode, "--disable-gui", "--hide-analyzers", "--plain",
-            "--port", "-1", str(script),
+            "--port", "-1", "-e", f"include {monitor_path(script)}",
             "-e", "sysbus.cpu PerformanceInMips 16",
-            "-e", f"sysbus.usart2 CreateFileBackend @{trace} true",
+            "-e", f"sysbus.usart2 CreateFileBackend {monitor_path(trace)} true",
             "-e", 'emulation RunFor "00:00:00.15"',
         ]
         for key in "31Wsnq33Q3Q32Q":

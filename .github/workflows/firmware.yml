@@ -58,6 +58,8 @@ jobs:
       - name: Test shared launcher and all games on Renode
         run: |
           renode="$RUNNER_TEMP/renode/renode"
+          export TMPDIR="$RUNNER_TEMP/renode tests"
+          mkdir -p "$TMPDIR"
           python3 tests/systick_renode.py build/games.elf --renode "$renode"
           python3 tests/menu_renode.py build/games.elf --renode "$renode"
           python3 tests/tetris_renode.py --elf build/games.elf --renode "$renode" --uart-log build/tetris.uart

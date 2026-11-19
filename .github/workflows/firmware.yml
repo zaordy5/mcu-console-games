@@ -41,6 +41,9 @@ jobs:
             arm-none-eabi-size build/games.elf
             sha256sum build/games.elf
           } 2>&1 | tee build/build.log
+          sed -n '/^mach create/,$p' emulation/stm32f4.resc |
+            sed 's@LoadELF \$bin@LoadELF $ORIGIN/games.elf@' > build/games.resc
+          cp docs/INTEGRATION.md build/INTEGRATION.md
       - name: Test all games on the host
         run: |
           flags=(-std=c11 -Wall -Wextra -Werror -pedantic -Iinclude -Isrc -Isrc/minesweeper)
@@ -80,6 +83,8 @@ jobs:
             build/commit.txt
             build/build.log
             build/games.elf
+            build/games.resc
+            build/INTEGRATION.md
             build/menu-check/
             build/pong-check/
             build/tetris.uart

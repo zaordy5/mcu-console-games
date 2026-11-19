@@ -69,7 +69,8 @@ def check_uart(data: bytes) -> None:
     if hard.count(GAME_OVER) != 1 or normal.count(BOTTOM_CURSOR) != 1:
         raise ValueError("Hard game over or clean Normal restart was not observed")
     demo = screens[13]
-    if b"\x1b[21;10H......" not in demo or b"Space" not in demo:
+    ghost = b"\x1b[20;12H\x1b[38;2;205;170;209m" + FIELD_BG + b"[]\x1b[21;10H[][][]"
+    if ghost not in demo or b"Space" not in demo:
         raise ValueError("The opening frame is missing the ghost or the hard-drop hint")
     if not demo.endswith(RESET):
         raise ValueError("The demo did not reset the terminal style")

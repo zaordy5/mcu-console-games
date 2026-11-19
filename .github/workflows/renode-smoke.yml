@@ -1,0 +1,36 @@
+name: Renode USART2 smoke test
+on:
+  push:
+    branches: [verify/renode-usart2]
+    paths:
+      - emulation/stm32f4.resc
+      - .github/workflows/renode-smoke.yml
+
+permissions:
+  contents: read
+
+jobs:
+  uart:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install Renode 1.17.0
+        working-directory: ${{ runner.temp }}
+        run: |
+          curl -fLsS --retry 2 -o renode.tar.gz 'https://github.com/renode/renode/releases/download/v1.17.0/renode-1.17.0.linux-portable.tar.gz'
+          echo '4ba7c68b59e2447f188ef4b4b112fcccd2802582c460beedceb63b84e5605a5f  renode.tar.gz' | sha256sum --check
+          mkdir renode
+          tar -xzf renode.tar.gz -C renode --strip-components=1
+          ./renode/renode --version
+      - name: Boot the project profile and check USART2
+        run: |
+          uart_log="$RUNNER_TEMP/usart2.log"
+          timeout 120s "$RUNNER_TEMP/renode/renode" --disable-gui --hide-analyzers --plain \
+            emulation/stm32f4.resc \
+            -e "sysbus.usart2 CreateFileBackend @$uart_log true" \
+            -e 'emulation RunFor "00:00:02"' -e 'quit'
+          cat "$uart_log"
+          grep -F 'Hello World! stm32f4_disco' "$uart_log"
